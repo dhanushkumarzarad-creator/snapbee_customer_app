@@ -120,7 +120,15 @@ class _SignupScreenState extends State<SignupScreen> {
 
       if (!mounted) return;
       _showSnack('Account created! Welcome to SnapBee.');
-      // TODO: navigate to the Customer Dashboard once that route exists.
+      // Pop back to whatever presented this screen (LoginScreen, pushed
+      // from main.dart's _AuthGate). No manual navigation to a dashboard
+      // is needed: _AuthGate listens to Supabase's onAuthStateChange and
+      // swaps to MainScreen reactively the moment a session exists. If
+      // this Supabase project requires email confirmation before a
+      // session is granted, popping back to LoginScreen is exactly right
+      // instead. Either way, leaving the customer stuck on this form
+      // (the previous behavior) was a dead end.
+      Navigator.of(context).maybePop();
     } on CustomerRegistrationException catch (e) {
       _showSnack(e.message);
     } on AuthException catch (e) {
@@ -133,8 +141,10 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   void _handleGoogleSignUp() {
-    // TODO: wire to Supabase OAuth (`signInWithOAuth(OAuthProvider.google)`).
-    _showSnack('Continue with Google tapped.');
+    // Not wired to Supabase OAuth yet (`signInWithOAuth(OAuthProvider.google)`)
+    // — say so plainly rather than showing a snack that implies it did
+    // something.
+    _showSnack('Sign up with Google is not available yet. Please use email.');
   }
 
   void _handleLoginTap() {

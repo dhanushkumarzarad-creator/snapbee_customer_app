@@ -116,33 +116,27 @@ class _OrdersScreenState extends State<OrdersScreen> {
     );
   }
 
+  // Neither chat nor online payment exist yet — no ChatScreen, no payment
+  // gateway, and every real order is fetched as OrderPaymentStatus.cod
+  // (see _toOrderModel; there's no payment_status column on the live
+  // `orders` table to read a real value from). These handlers used to fake
+  // success (a snackbar saying "Payment successful!" that flipped the
+  // order to paid only in local state, never persisted — a customer would
+  // believe they'd paid when nothing happened) — now they say plainly that
+  // the feature isn't available instead of pretending it worked.
+
   void _handleChat(OrderModel order) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Opening chat for ${order.shopName}...')),
+      const SnackBar(content: Text('Chat support is not available yet.')),
     );
-    // TODO: Navigate to ChatScreen(shopId: order.orderId)
   }
 
   void _handlePayNow(OrderModel order) {
-    setState(() {
-      final index = _activeOrders.indexWhere((o) => o.orderId == order.orderId);
-      if (index == -1) return;
-      _activeOrders[index] = OrderModel(
-        orderId: order.orderId,
-        shopName: order.shopName,
-        storeImageUrl: order.storeImageUrl,
-        itemsCount: order.itemsCount,
-        deliveryEta: order.deliveryEta,
-        deliveryOtp: order.deliveryOtp,
-        orderAmount: order.orderAmount,
-        status: order.status,
-        paymentStatus: OrderPaymentStatus.paid,
-      );
-    });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Payment successful!')));
-    // TODO: Trigger real payment flow, then update via repository.
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Online payment is not available yet — please pay via Cash on Delivery.'),
+      ),
+    );
   }
 
   void _handleAddProduct(RelatedProductModel product) {
@@ -220,10 +214,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
           ),
         ),
       ),
-      // bottomNavigationBar: SnapBeeBottomNav(
-      //   currentIndex: _bottomNavIndex,
-      //   onTap: (index) => setState(() => _bottomNavIndex = index),
-      // ),
+      // No bottomNavigationBar here on purpose: MainScreen owns "the one
+      // and only BottomNavigationWidget instance" (see its own doc comment)
+      // and this screen is pushed on top of it via Navigator.push.
     );
   }
 }
@@ -446,99 +439,3 @@ class _EmptyOrdersState extends StatelessWidget {
   }
 }
 
-/// SnapBee's shared bottom navigation bar.
-///
-/// NOTE: If your project already has a shared `SnapBeeBottomNav` (used on
-/// the Category / Offer Zone screens), delete this class and import that
-/// one instead — this is provided so the file compiles standalone.
-class SnapBeeBottomNav extends StatelessWidget {
-  final int currentIndex;
-  final ValueChanged<int> onTap;
-
-  const SnapBeeBottomNav({
-    super.key,
-    required this.currentIndex,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 16,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 62,
-          child: Row(
-            children: [
-              _NavItem(
-                icon: Icons.home_rounded,
-                selected: currentIndex == 0,
-                onTap: () => onTap(0),
-              ),
-              _NavItem(
-                icon: Icons.grid_view_rounded,
-                selected: currentIndex == 1,
-                onTap: () => onTap(1),
-              ),
-              _NavItem(
-                icon: Icons.percent_rounded,
-                selected: currentIndex == 2,
-                onTap: () => onTap(2),
-              ),
-              _NavItem(
-                icon: Icons.person_outline_rounded,
-                selected: currentIndex == 3,
-                onTap: () => onTap(3),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _NavItem extends StatelessWidget {
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _NavItem({
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        child: Center(
-          child: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: selected
-                  ? kSnapBeeOrange.withValues(alpha: 0.15)
-                  : Colors.transparent,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: selected ? kSnapBeeOrange : Colors.grey),
-          ),
-        ),
-      ),
-    );
-  }
-}
