@@ -26,6 +26,7 @@ import 'nearby_store_section.dart';
 import '../cart/cart_screen.dart';
 import '../wishlist/wishlist_screen.dart';
 import '../order_history/order_history_screen.dart';
+import '../order_history/models/order_history_model.dart';
 
 class OrdersScreen extends StatefulWidget {
   /// Number of items currently in the cart — feeds the AppBar cart badge.
@@ -106,6 +107,27 @@ class _OrdersScreenState extends State<OrdersScreen> {
     );
   }
 
+  /// OrderHistoryScreen falls back to fabricated sample orders (fake
+  /// vendor names, fake order numbers, fake amounts) whenever it's opened
+  /// with no `orders` passed in — which both "History" entry points below
+  /// used to do. Fetches this customer's real order history first so the
+  /// screen renders actual account data instead.
+  Future<void> _openOrderHistory() async {
+    List<OrderHistoryModel> history = const [];
+    try {
+      final rows = await _orderRepository.fetchMyOrders();
+      history = [for (final row in rows) OrderHistoryModel.fromOrderRow(row)];
+    } catch (_) {
+      // OrderHistoryScreen has no error state of its own — an empty list
+      // is the honest fallback rather than fabricated orders.
+    }
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => OrderHistoryScreen(orders: history)),
+    );
+  }
+
   void _handleTrackNow(OrderModel order) {
     Navigator.push(
       context,
@@ -154,7 +176,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surfaceContainerLowest,
-      appBar: _OrdersAppBar(cartItemCount: widget.cartItemCount),
+      appBar: _OrdersAppBar(cartItemCount: widget.cartItemCount, onHistoryTap: _openOrderHistory),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -170,14 +192,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     title: 'Active Orders',
                     actionLabel: 'History',
                     actionIcon: Icons.history_rounded,
-                    onActionTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const OrderHistoryScreen(),
-                        ),
-                      );
-                    },
+                    onActionTap: _openOrderHistory,
                   ),
                   if (_isLoading)
                     const Padding(
@@ -225,8 +240,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
 /// cart icon carrying a live item-count badge.
 class _OrdersAppBar extends StatelessWidget implements PreferredSizeWidget {
   final int cartItemCount;
+  final VoidCallback onHistoryTap;
 
-  const _OrdersAppBar({required this.cartItemCount});
+  const _OrdersAppBar({required this.cartItemCount, required this.onHistoryTap});
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
@@ -256,14 +272,7 @@ class _OrdersAppBar extends StatelessWidget implements PreferredSizeWidget {
         IconButton(
           icon: const Icon(Icons.history_rounded),
           tooltip: 'Order History',
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const OrderHistoryScreen(),
-              ),
-            );
-          },
+          onPressed: onHistoryTap,
         ),
         IconButton(
           icon: const Icon(Icons.favorite_border_rounded),

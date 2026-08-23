@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:snapbee_customer_app/core/constants/app_colors.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../data/cart/cart_store.dart';
 import '../../data/repositories/category_repository.dart';
 import '../../data/repositories/product_repository.dart';
 import '../category/category_screen.dart';
@@ -39,6 +40,21 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadCatalog();
+    // The header's cart badge previously showed a hardcoded "2" regardless
+    // of real cart contents (HomeHeader.cartItemCount defaulted to 2 and
+    // was never overridden here) — rebuild on real CartStore changes so it
+    // reflects the actual cart instead.
+    CartStore.instance.addListener(_onCartChanged);
+  }
+
+  @override
+  void dispose() {
+    CartStore.instance.removeListener(_onCartChanged);
+    super.dispose();
+  }
+
+  void _onCartChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadCatalog() async {
@@ -83,6 +99,7 @@ class _HomeScreenState extends State<HomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               HomeHeader(
+                cartItemCount: CartStore.instance.activeItemCount,
                 onLocationTap: () {},
 
                 onNotificationTap: () {

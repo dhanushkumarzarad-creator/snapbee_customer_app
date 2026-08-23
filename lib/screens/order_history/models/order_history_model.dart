@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../data/repositories/order_repository.dart';
+
 /// Payment status for a past order.
 enum PaymentStatus { paid, pending, failed, refunded }
 
@@ -145,6 +147,34 @@ class OrderHistoryModel {
     required this.paymentStatus,
     required this.deliveryStatus,
   });
+
+  /// Adapts a real order row (`OrderRepository.fetchMyOrders`) into this
+  /// screen's model. No payment_status column exists on the live `orders`
+  /// table (no payment gateway is wired into this app), so every real
+  /// order is mapped as paid — same COD assumption OrdersScreen already
+  /// makes for active orders.
+  factory OrderHistoryModel.fromOrderRow(OrderRow row) {
+    final deliveryStatus = row.isCancelled
+        ? DeliveryStatus.cancelled
+        : switch (row.timelineStage) {
+            3 => DeliveryStatus.delivered,
+            2 => DeliveryStatus.outForDelivery,
+            1 => DeliveryStatus.preparing,
+            _ => DeliveryStatus.placed,
+          };
+    return OrderHistoryModel(
+      id: row.id,
+      orderNumber: row.id,
+      storeName: row.vendorName.isEmpty ? 'Store' : row.vendorName,
+      storeImageUrl: '',
+      placedAt: row.orderDate,
+      amount: row.totalAmount,
+      itemCount: row.itemCount,
+      itemsPreview: row.itemCount == 1 ? '1 item' : '${row.itemCount} items',
+      paymentStatus: PaymentStatus.paid,
+      deliveryStatus: deliveryStatus,
+    );
+  }
 
   factory OrderHistoryModel.fromJson(Map<String, dynamic> json) {
     return OrderHistoryModel(

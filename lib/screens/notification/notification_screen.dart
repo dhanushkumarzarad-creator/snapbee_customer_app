@@ -8,8 +8,12 @@ import 'notification_model.dart';
 /// Groups notifications into Today / Yesterday / This Week / Earlier,
 /// supports "mark all as read", swipe-to-dismiss, and shows an empty
 /// state when there's nothing to show. Pass in real data from your
-/// Supabase-backed provider/bloc via the [notifications] parameter —
-/// sample data is used only when none is provided, for previewing.
+/// Supabase-backed provider/bloc via the [notifications] parameter — no
+/// notifications backend/table exists yet anywhere in this app, so every
+/// current caller passes nothing and the empty state is what customers
+/// actually see (this used to fall back to fabricated sample
+/// notifications instead, shown to every real customer with no real
+/// notifications feature behind them).
 class NotificationScreen extends StatefulWidget {
   final List<NotificationModel>? notifications;
   final Future<void> Function()? onRefresh;
@@ -32,9 +36,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
   @override
   void initState() {
     super.initState();
-    _items = List<NotificationModel>.from(
-      widget.notifications ?? _sampleNotifications(),
-    );
+    _items = List<NotificationModel>.from(widget.notifications ?? const []);
   }
 
   @override
@@ -183,78 +185,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
     ];
   }
 
-  /// Sample data used only when the screen isn't wired up to a real
-  /// data source yet — handy for quick previews during development.
-  List<NotificationModel> _sampleNotifications() {
-    final now = DateTime.now();
-    return [
-      NotificationModel(
-        id: '1',
-        type: NotificationType.order,
-        title: 'Order Confirmed',
-        message:
-            'Your order #SB-ORD-10293 has been confirmed and is being packed.',
-        createdAt: now.subtract(const Duration(minutes: 2)),
-        isRead: false,
-      ),
-      NotificationModel(
-        id: '2',
-        type: NotificationType.delivery,
-        title: 'Out for Delivery',
-        message: 'Ravi is on the way with your order. Arriving in 12 mins.',
-        createdAt: now.subtract(const Duration(minutes: 40)),
-        isRead: false,
-      ),
-      NotificationModel(
-        id: '3',
-        type: NotificationType.offer,
-        title: 'Flat 50% OFF on Groceries',
-        message: 'Hurry! Use code SNAP50 before midnight to save big.',
-        createdAt: now.subtract(const Duration(hours: 3)),
-        isRead: true,
-      ),
-      NotificationModel(
-        id: '4',
-        type: NotificationType.payment,
-        title: 'Payment Successful',
-        message: '₹482 was paid successfully for order #SB-ORD-10281.',
-        createdAt: now.subtract(const Duration(days: 1, hours: 2)),
-        isRead: true,
-      ),
-      NotificationModel(
-        id: '5',
-        type: NotificationType.reward,
-        title: 'You just reached Gold Club!',
-        message: 'Enjoy lower fees and priority support on every order now.',
-        createdAt: now.subtract(const Duration(days: 1, hours: 5)),
-        isRead: false,
-      ),
-      NotificationModel(
-        id: '6',
-        type: NotificationType.referral,
-        title: 'Referral Bonus Credited',
-        message: 'You earned ₹100 wallet cash for referring Priya.',
-        createdAt: now.subtract(const Duration(days: 3)),
-        isRead: true,
-      ),
-      NotificationModel(
-        id: '7',
-        type: NotificationType.wishlist,
-        title: 'Price Drop Alert',
-        message: 'An item in your wishlist just got cheaper by ₹30.',
-        createdAt: now.subtract(const Duration(days: 4)),
-        isRead: true,
-      ),
-      NotificationModel(
-        id: '8',
-        type: NotificationType.announcement,
-        title: 'Scheduled Maintenance',
-        message: 'SnapBee will be briefly unavailable tonight from 2-3 AM.',
-        createdAt: now.subtract(const Duration(days: 6)),
-        isRead: true,
-      ),
-    ];
-  }
 }
 
 /// Sticky-feeling section label ("Today", "Yesterday", "This Week", "Earlier").

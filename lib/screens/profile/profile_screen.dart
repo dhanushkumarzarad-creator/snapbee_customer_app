@@ -1,14 +1,37 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/membership_constants.dart';
+import '../../data/repositories/order_repository.dart';
 import '../notification/notification_screen.dart';
 import '../orders/orders_screen.dart';
 import '../wishlist/wishlist_screen.dart';
 import '../order_history/order_history_screen.dart';
+import '../order_history/models/order_history_model.dart';
 import 'widgets/membership_card.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
+
+  /// OrderHistoryScreen falls back to fabricated sample orders when opened
+  /// with no `orders` passed in — fetch this customer's real order history
+  /// first so Profile's "History" quick action shows actual account data
+  /// instead, same fix as the Orders tab's own History entry points.
+  Future<void> _openOrderHistory(BuildContext context) async {
+    List<OrderHistoryModel> history = const [];
+    try {
+      final rows = await OrderRepository(Supabase.instance.client).fetchMyOrders();
+      history = [for (final row in rows) OrderHistoryModel.fromOrderRow(row)];
+    } catch (_) {
+      // OrderHistoryScreen has no error state of its own — an empty list
+      // is the honest fallback rather than fabricated orders.
+    }
+    if (!context.mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => OrderHistoryScreen(orders: history)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -336,19 +359,17 @@ class ProfileScreen extends StatelessWidget {
                     Icons.history,
                     "History",
                     Colors.teal,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const OrderHistoryScreen(),
-                        ),
-                      );
-                    },
+                    onTap: () => _openOrderHistory(context),
                   ),
                   _quickAction(
                     Icons.more_horiz,
                     "More",
                     Colors.grey,
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('More options are coming soon.')),
+                      );
+                    },
                   ),
                 ],
               ),

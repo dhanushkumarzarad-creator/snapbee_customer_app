@@ -18,8 +18,13 @@ class HomeHeader extends StatelessWidget {
     super.key,
     this.cityLabel = 'Dharmapuri',
     this.addressLabel = 'Near Bus Stand, Dharmapuri',
-    this.cartItemCount = 2,
-    this.notificationCount = 3,
+    // No caller should rely on these defaults for real counts — they used
+    // to be hardcoded to 2/3, showing fake numbers to every customer
+    // regardless of actual cart contents or unread notifications. 0 hides
+    // the badge entirely (see the `if (badgeCount > 0)` below), which is
+    // the honest state when a caller doesn't pass a real value.
+    this.cartItemCount = 0,
+    this.notificationCount = 0,
     this.onLocationTap,
     this.onNotificationTap,
     this.onCartTap,
