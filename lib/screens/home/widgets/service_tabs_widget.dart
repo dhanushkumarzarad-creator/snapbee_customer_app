@@ -23,8 +23,22 @@ class ServiceTabsWidget extends StatelessWidget {
   final List<ServiceTabItem> items;
   final ValueChanged<int>? onTabTap;
 
+  /// Colors for whichever [ServiceTabItem] has `selected: true`. Default
+  /// to Daily Essentials' own orange — every existing call site (which
+  /// never passes these) renders byte-identical to before. A sector screen
+  /// (e.g. Services) renders this same shared widget with its own
+  /// [selectedFillColor]/[selectedBorderColor]/[selectedTextColor] so the
+  /// active pill matches that sector's theme instead of duplicating this
+  /// whole widget just to change three colors.
+  final Color selectedFillColor;
+  final Color selectedBorderColor;
+  final Color selectedTextColor;
+
   const ServiceTabsWidget({
     super.key,
+    this.selectedFillColor = AppColors.primaryOrangeLight,
+    this.selectedBorderColor = AppColors.primaryOrange,
+    this.selectedTextColor = AppColors.primaryOrangeDark,
     this.items = const [
       ServiceTabItem(
         label: 'Daily Essentials',
@@ -65,7 +79,13 @@ class ServiceTabsWidget extends StatelessWidget {
           separatorBuilder: (_, _) => const SizedBox(width: 10),
           itemBuilder: (context, index) {
             final item = items[index];
-            return _ServiceTab(item: item, onTap: () => onTabTap?.call(index));
+            return _ServiceTab(
+              item: item,
+              onTap: () => onTabTap?.call(index),
+              selectedFillColor: selectedFillColor,
+              selectedBorderColor: selectedBorderColor,
+              selectedTextColor: selectedTextColor,
+            );
           },
         ),
       ),
@@ -76,8 +96,17 @@ class ServiceTabsWidget extends StatelessWidget {
 class _ServiceTab extends StatelessWidget {
   final ServiceTabItem item;
   final VoidCallback? onTap;
+  final Color selectedFillColor;
+  final Color selectedBorderColor;
+  final Color selectedTextColor;
 
-  const _ServiceTab({required this.item, this.onTap});
+  const _ServiceTab({
+    required this.item,
+    this.onTap,
+    required this.selectedFillColor,
+    required this.selectedBorderColor,
+    required this.selectedTextColor,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -87,14 +116,10 @@ class _ServiceTab extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: item.selected
-              ? AppColors.primaryOrangeLight
-              : Colors.transparent,
+          color: item.selected ? selectedFillColor : Colors.transparent,
           borderRadius: BorderRadius.circular(14),
           border: item.selected
-              ? Border.all(
-                  color: AppColors.primaryOrange.withValues(alpha: 0.4),
-                )
+              ? Border.all(color: selectedBorderColor.withValues(alpha: 0.4))
               : null,
         ),
         child: Column(
@@ -116,9 +141,7 @@ class _ServiceTab extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: item.selected ? FontWeight.w700 : FontWeight.w500,
-                color: item.selected
-                    ? AppColors.primaryOrangeDark
-                    : AppColors.textPrimary,
+                color: item.selected ? selectedTextColor : AppColors.textPrimary,
               ),
             ),
           ],

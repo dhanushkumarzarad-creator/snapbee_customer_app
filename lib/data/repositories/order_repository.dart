@@ -23,6 +23,12 @@ class OrderRow {
   final DateTime? cancelledAt;
   final int itemCount;
 
+  /// Set once the dispatch engine's assignment is accepted (see
+  /// `sync_order_on_assignment_change()` in
+  /// delivery_partner_system.sql §2) — drives whether Order Details shows
+  /// the live-tracking card.
+  final String? deliveryPartnerId;
+
   const OrderRow({
     required this.id,
     required this.vendorName,
@@ -33,6 +39,7 @@ class OrderRow {
     this.deliveredAt,
     this.cancelledAt,
     this.itemCount = 0,
+    this.deliveryPartnerId,
   });
 
   /// 0=placed 1=preparing 2=out for delivery 3=delivered — derived from
@@ -67,6 +74,7 @@ class OrderRow {
       deliveredAt: _parseNullable(json['delivered_at']),
       cancelledAt: _parseNullable(json['cancelled_at']),
       itemCount: (json['order_items'] as List?)?.length ?? 0,
+      deliveryPartnerId: json['delivery_partner_id'] as String?,
     );
   }
 }
@@ -78,7 +86,7 @@ class OrderRepository {
 
   static const String _columns =
       'id, vendor_name, total_amount, status, order_date, created_at, '
-      'on_the_way_at, delivered_at, cancelled_at, order_items(id)';
+      'on_the_way_at, delivered_at, cancelled_at, delivery_partner_id, order_items(id)';
 
   /// The signed-in customer's own orders, most recent first. Empty list
   /// (not an error) when nothing has been ordered yet or no customer

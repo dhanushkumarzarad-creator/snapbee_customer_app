@@ -1,5 +1,9 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../data/repositories/live_tracking_repository.dart';
 import '../../data/repositories/order_repository.dart';
 import '../order_history/models/order_history_model.dart';
 import 'order_card.dart' show kSnapBeeOrange;
@@ -22,6 +26,11 @@ class OrderDetailsData {
   timelineStage; // 0=placed 1=preparing 2=out for delivery 3=delivered
   final bool isCancelled;
 
+  /// Only ever set by [fromSupabaseOrder] — the dummy `OrderModel`/
+  /// `OrderHistoryModel` adapters have no real delivery-partner identity to
+  /// carry, so live tracking never renders for those two entry points.
+  final String? deliveryPartnerId;
+
   const OrderDetailsData({
     required this.orderId,
     required this.storeName,
@@ -33,6 +42,7 @@ class OrderDetailsData {
     required this.timelineStage,
     required this.isCancelled,
     this.deliveryOtp,
+    this.deliveryPartnerId,
   });
 
   factory OrderDetailsData.fromOrder(OrderModel order) {
@@ -95,6 +105,7 @@ class OrderDetailsData {
       paymentLabel: paymentLabel,
       timelineStage: order.timelineStage,
       isCancelled: order.isCancelled,
+      deliveryPartnerId: order.deliveryPartnerId,
     );
   }
 
@@ -131,11 +142,16 @@ class OrderDetailsData {
   }
 }
 
-class OrderDetailsScreen extends StatelessWidget {
+class OrderDetailsScreen extends StatefulWidget {
   final OrderDetailsData order;
 
   const OrderDetailsScreen({super.key, required this.order});
 
+  @override
+  State<OrderDetailsScreen> createState() => _OrderDetailsScreenState();
+}
+
+class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   static const _stages = [
     'Order Placed',
     'Preparing',
@@ -149,9 +165,40 @@ class OrderDetailsScreen extends StatelessWidget {
     Icons.check_circle_rounded,
   ];
 
+  late final _trackingRepository = LiveTrackingRepository(Supabase.instance.client);
+  Timer? _trackingTimer;
+  PartnerLocation? _partnerLocation;
+
+  /// Only out-for-delivery orders with a real, backend-assigned partner —
+  /// see [OrderDetailsData.deliveryPartnerId]'s doc comment.
+  bool get _tracksLive =>
+      !widget.order.isCancelled && widget.order.timelineStage == 2 && widget.order.deliveryPartnerId != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_tracksLive) {
+      _pollLocation();
+      _trackingTimer = Timer.periodic(const Duration(seconds: 15), (_) => _pollLocation());
+    }
+  }
+
+  @override
+  void dispose() {
+    _trackingTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _pollLocation() async {
+    final location = await _trackingRepository.fetchPartnerLocation(widget.order.deliveryPartnerId!);
+    if (!mounted) return;
+    setState(() => _partnerLocation = location);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final order = widget.order;
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surfaceContainerLowest,
@@ -225,6 +272,10 @@ class OrderDetailsScreen extends StatelessWidget {
                 ],
               ),
             ),
+            if (_tracksLive)
+              _Card(
+                child: _LiveTrackingBody(location: _partnerLocation),
+              ),
             if (order.deliveryOtp != null)
               _Card(
                 child: Row(
@@ -329,6 +380,56 @@ class OrderDetailsScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// The tracking card's content — [location] is null while the partner
+/// hasn't sent a location update yet (freshly accepted) or a poll hasn't
+/// landed; both render the same "waiting for update" line rather than an
+/// error, since this is ordinary transient state, not a failure.
+class _LiveTrackingBody extends StatelessWidget {
+  final PartnerLocation? location;
+
+  const _LiveTrackingBody({required this.location});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final loc = location;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.two_wheeler_rounded, color: kSnapBeeOrange, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                loc?.partnerName ?? 'Your delivery partner',
+                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+            if (loc?.partnerPhone != null)
+              Text(loc!.partnerPhone!, style: theme.textTheme.bodySmall),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          loc == null
+              ? 'Waiting for a location update…'
+              : '${loc.lat.toStringAsFixed(5)}, ${loc.lng.toStringAsFixed(5)} • updated ${_relativeTime(loc.recordedAt)}',
+          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+
+  static String _relativeTime(DateTime at) {
+    final diff = DateTime.now().difference(at);
+    if (diff.inSeconds < 60) return '${diff.inSeconds}s ago';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    return '${diff.inHours}h ago';
   }
 }
 

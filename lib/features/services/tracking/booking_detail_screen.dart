@@ -1,0 +1,425 @@
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../complaints/complaint_form_sheet.dart';
+import '../data/services_booking_repository.dart';
+import '../disputes/dispute_form_sheet.dart';
+import '../booking/extra_work_response_sheet.dart';
+import '../models/service_booking.dart';
+import '../models/service_quotation.dart';
+import '../models/service_warranty.dart';
+import '../payments/payment_summary_widget.dart';
+import '../quotation/quotation_response_sheet.dart';
+import '../reviews/review_sheet.dart';
+import '../warranty/warranty_claim_sheet.dart';
+
+/// The full booking lifecycle hub — status timeline, arrival/completion OTP
+/// (readable by the customer only — the technician generates it but never
+/// sees it, see services_module_v2.sql's `mark_service_en_route`), pending
+/// quotation/extra-work approval, payment summary, warranty + claims,
+/// review, and complaint/dispute entry points. Reloads the booking (not
+/// just local state) after every action, since server-side status/fields
+/// may have changed underneath this screen.
+class BookingDetailScreen extends StatefulWidget {
+  final String bookingId;
+
+  const BookingDetailScreen({super.key, required this.bookingId});
+
+  @override
+  State<BookingDetailScreen> createState() => _BookingDetailScreenState();
+}
+
+class _BookingDetailScreenState extends State<BookingDetailScreen> {
+  final _repo = ServicesBookingRepository(Supabase.instance.client);
+
+  ServiceBookingRow? _booking;
+  ServiceQuotation? _quotation;
+  List<ServiceExtraWorkRequest> _extraWork = const [];
+  ServiceWarranty? _warranty;
+  List<WarrantyClaim> _warrantyClaims = const [];
+  Map<String, dynamic>? _existingReview;
+  bool _isLoading = true;
+  bool _isBusy = false;
+  String? _error;
+
+  static const _steps = ['Booked', 'Confirmed', 'Assigned', 'En Route', 'Arrived', 'Started', 'In Progress', 'Confirming', 'Completed'];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final booking = await _repo.fetchBooking(widget.bookingId);
+    if (!mounted) return;
+    if (booking == null) {
+      setState(() {
+        _isLoading = false;
+        _error = 'This booking could not be loaded.';
+      });
+      return;
+    }
+
+    final results = await Future.wait([
+      _repo.fetchPendingQuotation(widget.bookingId),
+      _repo.fetchExtraWorkRequests(widget.bookingId),
+      _repo.fetchWarranty(widget.bookingId),
+      booking.status == ServiceBookingStatus.completed
+          ? _repo.fetchExistingReview(widget.bookingId)
+          : Future.value(null),
+    ]);
+    final warranty = results[2] as ServiceWarranty?;
+    final claims = warranty == null ? <WarrantyClaim>[] : await _repo.fetchWarrantyClaims(warranty.id);
+
+    if (!mounted) return;
+    setState(() {
+      _booking = booking;
+      _quotation = results[0] as ServiceQuotation?;
+      _extraWork = results[1] as List<ServiceExtraWorkRequest>;
+      _warranty = warranty;
+      _warrantyClaims = claims;
+      _existingReview = results[3] as Map<String, dynamic>?;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _cancel() async {
+    setState(() {
+      _isBusy = true;
+      _error = null;
+    });
+    try {
+      await _repo.cancelBooking(widget.bookingId);
+      if (!mounted) return;
+      Navigator.pop(context);
+    } on ServicesException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.message;
+        _isBusy = false;
+      });
+    }
+  }
+
+  Future<void> _respondToQuotation(bool approve) async {
+    if (_quotation == null) return;
+    setState(() => _isBusy = true);
+    try {
+      await _repo.respondToQuotation(quotationId: _quotation!.id, approve: approve);
+      await _load();
+    } on ServicesException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => _isBusy = false);
+    }
+  }
+
+  Future<void> _respondToExtraWork(ServiceExtraWorkRequest request, bool approve) async {
+    setState(() => _isBusy = true);
+    try {
+      await _repo.respondToExtraWork(requestId: request.id, approve: approve);
+      await _load();
+    } on ServicesException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => _isBusy = false);
+    }
+  }
+
+  Future<void> _openReview() async {
+    final result = await showReviewSheet(context);
+    if (result == null || !mounted) return;
+    try {
+      await _repo.submitReview(bookingId: widget.bookingId, rating: result.$1, reviewText: result.$2);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Thanks for your review!')));
+      await _load();
+    } on ServicesException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  Future<void> _openWarrantyClaim() async {
+    if (_warranty == null) return;
+    final description = await showWarrantyClaimSheet(context);
+    if (description == null || !mounted) return;
+    try {
+      await _repo.raiseWarrantyClaim(warrantyId: _warranty!.id, description: description);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Warranty claim submitted.')));
+      await _load();
+    } on ServicesException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  Future<void> _openComplaint() async {
+    final result = await showComplaintFormSheet(context);
+    if (result == null || !mounted) return;
+    try {
+      await _repo.raiseComplaint(bookingId: widget.bookingId, category: result.$1, description: result.$2);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Complaint submitted.')));
+    } on ServicesException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  Future<void> _openDispute() async {
+    final result = await showDisputeFormSheet(context);
+    if (result == null || !mounted) return;
+    try {
+      await _repo.raiseDispute(bookingId: widget.bookingId, disputeType: result.$1, description: result.$2);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dispute submitted.')));
+    } on ServicesException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    final booking = _booking;
+    if (booking == null) {
+      return Scaffold(appBar: AppBar(title: const Text('Booking')), body: Center(child: Text(_error ?? 'Not found')));
+    }
+
+    final step = booking.status.timelineStep;
+    final showArrivalOtp = booking.arrivalOtp != null && booking.status == ServiceBookingStatus.enRoute;
+    final showCompletionOtp = booking.completionOtp != null && booking.status == ServiceBookingStatus.completionPending;
+    final pendingExtraWork = _extraWork.where((r) => r.isPendingCustomerApproval).toList();
+
+    return Scaffold(
+      appBar: AppBar(title: Text(booking.id)),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            Text(booking.serviceName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Text('₹${booking.quotedPrice.toStringAsFixed(0)}'),
+            const SizedBox(height: 20),
+
+            if (booking.status == ServiceBookingStatus.cancelled)
+              const Row(children: [
+                Icon(Icons.cancel, color: Colors.red),
+                SizedBox(width: 8),
+                Text('This booking was cancelled', style: TextStyle(color: Colors.red)),
+              ])
+            else if (step != null)
+              _Timeline(currentStep: step, steps: _steps),
+
+            if (_quotation != null) ...[
+              const SizedBox(height: 16),
+              _ActionRequiredCard(
+                title: 'Quotation ready for your approval',
+                subtitle: '₹${_quotation!.totalAmount.toStringAsFixed(0)} total',
+                busy: _isBusy,
+                onTap: () async {
+                  final approve = await showQuotationResponseSheet(context, _quotation!);
+                  if (approve != null) await _respondToQuotation(approve);
+                },
+              ),
+            ] else if (pendingExtraWork.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _ActionRequiredCard(
+                title: 'Extra work needs your approval',
+                subtitle: '₹${pendingExtraWork.first.price.toStringAsFixed(0)} · ${pendingExtraWork.first.description}',
+                busy: _isBusy,
+                onTap: () async {
+                  final approve = await showExtraWorkResponseSheet(context, pendingExtraWork.first);
+                  if (approve != null) await _respondToExtraWork(pendingExtraWork.first, approve);
+                },
+              ),
+            ],
+
+            if (showArrivalOtp) ...[
+              const SizedBox(height: 20),
+              _OtpCard(label: 'Arrival OTP', otp: booking.arrivalOtp!, hint: 'Read this to your technician on arrival.'),
+            ],
+            if (showCompletionOtp) ...[
+              const SizedBox(height: 20),
+              _OtpCard(label: 'Completion OTP', otp: booking.completionOtp!, hint: 'Read this once you\'re satisfied with the work.'),
+            ],
+
+            const SizedBox(height: 20),
+            const Text('Address', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text(booking.address),
+            const SizedBox(height: 12),
+            Text('Preferred: ${booking.preferredDate.day}/${booking.preferredDate.month}/${booking.preferredDate.year}, ${booking.preferredTimeSlot}'),
+
+            if (booking.customerNotes != null && booking.customerNotes!.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              const Text('Your notes', style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text(booking.customerNotes!),
+            ],
+
+            if (booking.vendorName != null || booking.technicianName != null) ...[
+              const SizedBox(height: 20),
+              const Text('Provider', style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              if (booking.vendorName != null) Text(booking.vendorName!),
+              if (booking.technicianName != null) Text('Technician: ${booking.technicianName!}'),
+            ],
+
+            const SizedBox(height: 20),
+            PaymentSummaryWidget(booking: booking),
+
+            if (_warranty != null && _warranty!.isActive) ...[
+              const SizedBox(height: 16),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Warranty', style: TextStyle(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      Text('${_warranty!.durationDays} days'
+                          '${_warranty!.expiresAt != null ? ' · expires ${_warranty!.expiresAt!.day}/${_warranty!.expiresAt!.month}/${_warranty!.expiresAt!.year}' : ''}'),
+                      if (_warrantyClaims.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        for (final claim in _warrantyClaims) Text('• ${claim.status}: ${claim.description}', style: const TextStyle(fontSize: 12)),
+                      ],
+                      const SizedBox(height: 10),
+                      OutlinedButton(onPressed: _openWarrantyClaim, child: const Text('Raise Warranty Claim')),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+
+            if (_error != null) ...[
+              const SizedBox(height: 16),
+              Text(_error!, style: const TextStyle(color: Colors.red)),
+            ],
+
+            const SizedBox(height: 24),
+            if (booking.status.isCancellable)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: _isBusy ? null : _cancel,
+                  child: _isBusy
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Cancel Booking'),
+                ),
+              ),
+
+            if (booking.status == ServiceBookingStatus.completed)
+              if (_existingReview != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Row(children: [
+                    const Icon(Icons.star, color: Colors.amber, size: 18),
+                    const SizedBox(width: 6),
+                    Text('You rated ${_existingReview!['rating']}/5'),
+                  ]),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _openReview, child: const Text('Rate & Review'))),
+                ),
+
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(child: TextButton(onPressed: _openComplaint, child: const Text('Raise a Complaint'))),
+                Expanded(child: TextButton(onPressed: _openDispute, child: const Text('Raise a Dispute'))),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionRequiredCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final bool busy;
+  final VoidCallback onTap;
+
+  const _ActionRequiredCard({required this.title, required this.subtitle, required this.busy, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: const Color(0xFFEFF6FF),
+      child: ListTile(
+        leading: const Icon(Icons.notifications_active_outlined, color: Colors.blue),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: Text(subtitle),
+        trailing: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.chevron_right),
+        onTap: busy ? null : onTap,
+      ),
+    );
+  }
+}
+
+class _OtpCard extends StatelessWidget {
+  final String label;
+  final String otp;
+  final String hint;
+
+  const _OtpCard({required this.label, required this.otp, required this.hint});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: const Color(0xFFFFF3DD), borderRadius: BorderRadius.circular(12)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          Text(otp, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 4, color: Color(0xFFFF9100))),
+          const SizedBox(height: 4),
+          Text(hint, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        ],
+      ),
+    );
+  }
+}
+
+class _Timeline extends StatelessWidget {
+  final int currentStep;
+  final List<String> steps;
+
+  const _Timeline({required this.currentStep, required this.steps});
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 4,
+      runSpacing: 8,
+      children: [
+        for (var i = 0; i < steps.length; i++)
+          Chip(
+            label: Text(steps[i], style: const TextStyle(fontSize: 10)),
+            avatar: Icon(i <= currentStep ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: i <= currentStep ? Colors.green : Colors.grey, size: 14),
+            backgroundColor: i == currentStep ? const Color(0xFFFFF3DD) : null,
+            visualDensity: VisualDensity.compact,
+          ),
+      ],
+    );
+  }
+}

@@ -6,9 +6,9 @@ import '../../data/repositories/category_repository.dart';
 import '../../data/repositories/product_repository.dart';
 import '../category/category_screen.dart';
 import '../category/featured_products_screen.dart';
+import '../../widgets/customer_home_header.dart';
+import '../../widgets/customer_search_bar.dart';
 import '../notification/notification_screen.dart';
-import 'widgets/home_header.dart';
-import 'widgets/search_bar_widget.dart';
 import 'widgets/service_tabs_widget.dart';
 import 'widgets/hero_banner_widget.dart';
 import 'widgets/quick_actions_widget.dart';
@@ -20,6 +20,7 @@ import 'widgets/product_model.dart';
 import '../cart/cart_screen.dart';
 import '../products/product_details_screen.dart';
 import '../search/search_screen.dart';
+import '../../features/services/services_main_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -98,28 +99,41 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              HomeHeader(
-                cartItemCount: CartStore.instance.activeItemCount,
+              CustomerHomeHeader(
+                backgroundColor: AppColors.creamBackground,
+                textPrimaryColor: AppColors.textPrimary,
+                textSecondaryColor: AppColors.textSecondary,
+                iconColor: const Color.fromARGB(255, 219, 128, 0),
                 onLocationTap: () {},
-
-                onNotificationTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const NotificationScreen(),
-                    ),
-                  );
-                },
-
-                onCartTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const CartScreen()),
-                  );
-                },
+                actions: [
+                  HeaderAction(
+                    icon: Icons.notifications_none_rounded,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const NotificationScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  HeaderAction(
+                    icon: Icons.shopping_cart_outlined,
+                    badgeCount: CartStore.instance.activeItemCount,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const CartScreen()),
+                      );
+                    },
+                  ),
+                ],
               ),
 
-              SearchBarWidget(
+              CustomerSearchBar(
+                backgroundColor: AppColors.creamBackground,
+                textPrimaryColor: AppColors.textPrimary,
+                textSecondaryColor: AppColors.textSecondary,
                 readOnly: true,
                 onTap: () => Navigator.push(
                   context,
@@ -128,7 +142,21 @@ class _HomeScreenState extends State<HomeScreen> {
                 onScanTap: () {},
               ),
 
-              ServiceTabsWidget(onTabTap: (index) {}),
+              ServiceTabsWidget(
+                onTabTap: (index) {
+                  // Index 1 = "Services" (home services: AC repair,
+                  // plumbing, electrician, cleaning, etc.) — the only tab
+                  // with a real destination today. Travel/Entertainment/
+                  // E-Commerce (2-4) stay no-ops; they're not built yet and
+                  // out of scope here.
+                  if (index == 1) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ServicesMainScreen()),
+                    );
+                  }
+                },
+              ),
 
               const SizedBox(height: 4),
 

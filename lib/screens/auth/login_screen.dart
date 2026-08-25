@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../home/home_screen.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/validators.dart';
 import 'signup_screen.dart';
@@ -59,10 +58,15 @@ class _LoginScreenState extends State<LoginScreen> {
         context,
       ).showSnackBar(const SnackBar(content: Text("Login Successful")));
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-      );
+      // No manual navigation here: `_AuthGate` (main.dart) listens to
+      // Supabase's `onAuthStateChange` and reactively swaps this screen
+      // for `MainScreen` — the single shell that owns the bottom
+      // navigation bar. A previous version of this handler additionally
+      // did `Navigator.pushReplacement(..., HomeScreen())`, which replaced
+      // that reactive route with a bare `HomeScreen` (no `MainScreen`
+      // wrapper, so no bottom nav bar) and permanently orphaned it from
+      // `_AuthGate` for the rest of the session — the real cause of the
+      // "Daily Essentials has no bottom nav" regression.
     } on AuthException catch (e) {
       _showSnack(e.message);
     } catch (_) {

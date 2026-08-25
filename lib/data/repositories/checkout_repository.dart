@@ -12,6 +12,14 @@
 // submit their own numbers, and delivery eligibility is never bypassed by
 // this app — it's enforced inside the RPC itself, atomically with order
 // creation.
+//
+// `isCod` maps onto the `p_payment_method` param
+// (snapbee_admin/supabase/delivery_partner_system.sql §10) — the RPC
+// stores it as `orders.payment_method`, which the Delivery Partner
+// dispatch engine's COD gate and proof-of-delivery policy both key off of.
+// There is still no real payment gateway wired into this app, so UPI/Card
+// both collapse to `prepaid` here; only Cash on Delivery is a real,
+// backend-enforced distinction.
 // ============================================================================
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -105,6 +113,7 @@ class CheckoutRepository {
     required double customerLat,
     required double customerLng,
     required String deliveryAddress,
+    bool isCod = false,
   }) async {
     if (items.isEmpty) {
       throw const CheckoutException('Your cart is empty.');
@@ -129,6 +138,7 @@ class CheckoutRepository {
           'p_customer_lat': customerLat,
           'p_customer_lng': customerLng,
           'p_delivery_address': deliveryAddress,
+          'p_payment_method': isCod ? 'cod' : 'prepaid',
         },
       );
 

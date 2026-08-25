@@ -24,9 +24,12 @@ enum _PaymentMethod { upi, card, cod }
 /// eligibility/radius/quote logic the recommendation engine already
 /// enforces, not bypassed or reimplemented here. There's still no real
 /// address book or payment gateway wired into this app (Profile's "Saved
-/// Addresses"/"Payments" menu entries are still stubs), so payment method
-/// stays a local-only selection — `orders` has no payment column to send
-/// it to.
+/// Addresses"/"Payments" menu entries are still stubs) — UPI/Card both
+/// stay local-only selections with no gateway behind them. Cash on
+/// Delivery is different: it's a real, backend-enforced choice
+/// (`CheckoutRepository.placeOrder`'s `isCod`), since `orders` now has a
+/// `payment_method` column the Delivery Partner dispatch engine's COD
+/// gate and proof-of-delivery policy both key off of.
 class CheckoutScreen extends StatefulWidget {
   final List<CartItemModel> items;
   final CartBill bill;
@@ -160,6 +163,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         customerLat: location.latitude,
         customerLng: location.longitude,
         deliveryAddress: _addressController.text.trim(),
+        isCod: _selectedMethod == _PaymentMethod.cod,
       );
       CartStore.instance.clear();
       if (!mounted) return;
