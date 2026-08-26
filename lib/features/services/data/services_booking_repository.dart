@@ -144,9 +144,12 @@ class ServicesBookingRepository {
 
   Future<List<ServiceExtraWorkRequest>> fetchExtraWorkRequests(String bookingId) async {
     try {
+      // Explicit column list — never select(*) here: extra_work_requests also
+      // carries admin/AI-internal columns (ai_risk_score, ai_recommendation)
+      // that must not reach a customer-facing client (see SERVICES_ARCHITECTURE.md).
       final rows = await _client
           .from('extra_work_requests')
-          .select('*')
+          .select('id, booking_id, description, price, status, approval_mode')
           .eq('booking_id', bookingId)
           .order('created_at', ascending: false);
       return (rows as List)
@@ -178,9 +181,12 @@ class ServicesBookingRepository {
 
   Future<List<WarrantyClaim>> fetchWarrantyClaims(String warrantyId) async {
     try {
+      // Explicit column list — warranty_claims also carries admin/AI-internal
+      // columns (ai_risk_flag, ai_risk_reason) that must not reach a
+      // customer-facing client (see SERVICES_ARCHITECTURE.md).
       final rows = await _client
           .from('warranty_claims')
-          .select('*')
+          .select('id, warranty_id, description, status, created_at')
           .eq('warranty_id', warrantyId)
           .order('created_at', ascending: false);
       return (rows as List).map((r) => WarrantyClaim.fromJson(Map<String, dynamic>.from(r as Map))).toList();
