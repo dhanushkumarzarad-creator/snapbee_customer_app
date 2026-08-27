@@ -46,7 +46,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _locationService = LocationService();
   final _addressController = TextEditingController();
 
-  _PaymentMethod _selectedMethod = _PaymentMethod.upi;
+  // Cash on Delivery is the only real, backend-enforced payment method
+  // (see checkout_repository.dart's own doc comment: no payment gateway is
+  // wired into this app). Defaulting to it — rather than UPI, as before —
+  // means the common path never silently "succeeds" a payment nothing
+  // actually collected.
+  _PaymentMethod _selectedMethod = _PaymentMethod.cod;
 
   bool _isResolvingContext = true;
   String? _contextError;
@@ -302,19 +307,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 children: [
                   _PaymentOption(
                     label: 'UPI',
-                    subtitle: 'Pay via Google Pay, PhonePe & more',
+                    subtitle: 'Coming soon — pay via Cash on Delivery for now',
                     icon: Icons.qr_code_rounded,
-                    selected: _selectedMethod == _PaymentMethod.upi,
-                    onTap: () =>
-                        setState(() => _selectedMethod = _PaymentMethod.upi),
+                    selected: false,
+                    enabled: false,
+                    onTap: () => _showMessage(
+                      'Online payments aren\'t available yet — please choose Cash on Delivery.',
+                    ),
                   ),
                   _PaymentOption(
                     label: 'Credit / Debit Card',
-                    subtitle: 'Visa, Mastercard, RuPay',
+                    subtitle: 'Coming soon — pay via Cash on Delivery for now',
                     icon: Icons.credit_card_rounded,
-                    selected: _selectedMethod == _PaymentMethod.card,
-                    onTap: () =>
-                        setState(() => _selectedMethod = _PaymentMethod.card),
+                    selected: false,
+                    enabled: false,
+                    onTap: () => _showMessage(
+                      'Online payments aren\'t available yet — please choose Cash on Delivery.',
+                    ),
                   ),
                   _PaymentOption(
                     label: 'Cash on Delivery',
@@ -547,66 +556,76 @@ class _PaymentOption extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
+  /// False for UPI/Card — no payment gateway is wired into this app (see
+  /// checkout_repository.dart), so those options stay visible (real,
+  /// planned methods — not hidden) but greyed out and unselectable rather
+  /// than silently "succeeding" a payment nothing actually collected.
+  final bool enabled;
+
   const _PaymentOption({
     required this.label,
     required this.subtitle,
     required this.icon,
     required this.selected,
     required this.onTap,
+    this.enabled = true,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final iconColor = enabled ? AppColors.primaryOrange : theme.colorScheme.outlineVariant;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.primaryOrangeLight.withValues(alpha: 0.5)
-              : null,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
+      child: Opacity(
+        opacity: enabled ? 1 : 0.55,
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
             color: selected
-                ? AppColors.primaryOrange
-                : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: AppColors.primaryOrange),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              selected
-                  ? Icons.radio_button_checked_rounded
-                  : Icons.radio_button_off_rounded,
+                ? AppColors.primaryOrangeLight.withValues(alpha: 0.5)
+                : null,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
               color: selected
                   ? AppColors.primaryOrange
-                  : theme.colorScheme.outlineVariant,
+                  : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
             ),
-          ],
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 20, color: iconColor),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                enabled
+                    ? (selected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded)
+                    : Icons.lock_outline_rounded,
+                size: enabled ? 24 : 18,
+                color: selected ? AppColors.primaryOrange : theme.colorScheme.outlineVariant,
+              ),
+            ],
+          ),
         ),
       ),
     );

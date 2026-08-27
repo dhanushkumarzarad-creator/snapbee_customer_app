@@ -31,6 +31,17 @@ class OrderDetailsData {
   /// carry, so live tracking never renders for those two entry points.
   final String? deliveryPartnerId;
 
+  /// True only for [fromSupabaseOrder] — the Cancel action only makes sense
+  /// (and only has a real backend row behind it) for a genuine Supabase
+  /// order, never the dummy `OrderModel`/`OrderHistoryModel` adapters.
+  final bool isReal;
+
+  /// The raw `orders.status` value (only set by [fromSupabaseOrder]) — more
+  /// precise than [timelineStage] for deciding cancel-eligibility, since
+  /// several distinct real statuses (`ready`, `pickedUp`) collapse onto the
+  /// same `timelineStage` as `pending`/`accepted`.
+  final String? rawStatus;
+
   const OrderDetailsData({
     required this.orderId,
     required this.storeName,
@@ -43,6 +54,8 @@ class OrderDetailsData {
     required this.isCancelled,
     this.deliveryOtp,
     this.deliveryPartnerId,
+    this.isReal = false,
+    this.rawStatus,
   });
 
   factory OrderDetailsData.fromOrder(OrderModel order) {
@@ -106,6 +119,8 @@ class OrderDetailsData {
       timelineStage: order.timelineStage,
       isCancelled: order.isCancelled,
       deliveryPartnerId: order.deliveryPartnerId,
+      isReal: true,
+      rawStatus: order.status,
     );
   }
 
@@ -166,13 +181,54 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   ];
 
   late final _trackingRepository = LiveTrackingRepository(Supabase.instance.client);
+  late final _orderRepository = OrderRepository(Supabase.instance.client);
   Timer? _trackingTimer;
   PartnerLocation? _partnerLocation;
+  late OrderDetailsData _order = widget.order;
+  bool _cancelling = false;
 
   /// Only out-for-delivery orders with a real, backend-assigned partner —
   /// see [OrderDetailsData.deliveryPartnerId]'s doc comment.
   bool get _tracksLive =>
-      !widget.order.isCancelled && widget.order.timelineStage == 2 && widget.order.deliveryPartnerId != null;
+      !_order.isCancelled && _order.timelineStage == 2 && _order.deliveryPartnerId != null;
+
+  /// Mirrors the `orders_update_own_customer` RLS policy's own `using`
+  /// clause (supabase/orders_customer_vendor_cancellation_rls.sql) — a
+  /// tighter gate than [OrderDetailsData.isCancelled] since `ready`/
+  /// `pickedUp` are no longer cancellable but aren't "cancelled" either.
+  bool get _canCancel =>
+      _order.isReal && (_order.rawStatus == 'pending' || _order.rawStatus == 'accepted');
+
+  Future<void> _cancelOrder() async {
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (context) => _CancelOrderReasonDialog(),
+    );
+    if (reason == null || !mounted) return;
+
+    setState(() => _cancelling = true);
+    try {
+      final updated = await _orderRepository.cancelOrder(_order.orderId, reason: reason);
+      if (!mounted) return;
+      setState(() {
+        _order = OrderDetailsData.fromSupabaseOrder(updated, paymentLabel: _order.paymentLabel);
+        _cancelling = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Order cancelled.')),
+      );
+    } on OrderCancellationException catch (e) {
+      if (!mounted) return;
+      setState(() => _cancelling = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _cancelling = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not cancel this order. Please try again.')),
+      );
+    }
+  }
 
   @override
   void initState() {
@@ -198,7 +254,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final order = widget.order;
+    final order = _order;
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surfaceContainerLowest,
@@ -376,9 +432,70 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                 ],
               ),
             ),
+            if (_canCancel)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                child: OutlinedButton.icon(
+                  onPressed: _cancelling ? null : _cancelOrder,
+                  icon: _cancelling
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(Icons.cancel_outlined, color: theme.colorScheme.error),
+                  label: Text(
+                    'Cancel Order',
+                    style: TextStyle(color: theme.colorScheme.error),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: theme.colorScheme.error),
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CancelOrderReasonDialog extends StatefulWidget {
+  @override
+  State<_CancelOrderReasonDialog> createState() => _CancelOrderReasonDialogState();
+}
+
+class _CancelOrderReasonDialogState extends State<_CancelOrderReasonDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Cancel this order?'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        maxLines: 2,
+        decoration: const InputDecoration(labelText: 'Reason (optional)'),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
+          child: const Text('Back'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context, rootNavigator: true)
+              .pop(_controller.text.trim().isEmpty ? 'Not specified' : _controller.text.trim()),
+          child: const Text('Cancel Order'),
+        ),
+      ],
     );
   }
 }

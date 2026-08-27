@@ -117,4 +117,46 @@ class OrderRepository {
     if (row == null) return null;
     return OrderRow.fromJson(Map<String, dynamic>.from(row));
   }
+
+  /// Cancels the signed-in customer's own order via the real
+  /// `cancel_customer_order` RPC (supabase/cancel_customer_order.sql) —
+  /// validates ownership/status server-side with specific error messages,
+  /// and fires a real `notify_customer()` cancellation notification.
+  /// (`orders_update_own_customer` RLS — supabase/
+  /// orders_customer_vendor_cancellation_rls.sql — independently enforces
+  /// the same "only pending/accepted, only to cancelled" rule underneath,
+  /// so this stays safe even if called some other way.) A
+  /// `PostgrestException` here carries the RPC's own `raise exception`
+  /// text (surfaced as-is — it's already customer-safe, unlike raw
+  /// SQL/RLS errors).
+  Future<OrderRow> cancelOrder(String orderId, {required String reason}) async {
+    try {
+      await _client.rpc('cancel_customer_order', params: {
+        'p_order_id': orderId,
+        'p_reason': reason,
+      });
+      final row = await _client.from('orders').select(_columns).eq('id', orderId).single();
+      return OrderRow.fromJson(Map<String, dynamic>.from(row));
+    } on PostgrestException catch (error) {
+      throw OrderCancellationException(_mapError(error.message));
+    }
+  }
+
+  String _mapError(String message) {
+    if (message.contains('no longer be cancelled') || message.contains('already being prepared')) {
+      return 'This order can no longer be cancelled.';
+    }
+    if (message.contains('order not found')) {
+      return 'This order could not be found.';
+    }
+    return 'Could not cancel this order. Please try again.';
+  }
+}
+
+class OrderCancellationException implements Exception {
+  final String message;
+  const OrderCancellationException(this.message);
+
+  @override
+  String toString() => message;
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../data/repositories/notification_repository.dart';
 import 'notification_card.dart';
 import 'notification_model.dart';
 
@@ -7,13 +9,13 @@ import 'notification_model.dart';
 ///
 /// Groups notifications into Today / Yesterday / This Week / Earlier,
 /// supports "mark all as read", swipe-to-dismiss, and shows an empty
-/// state when there's nothing to show. Pass in real data from your
-/// Supabase-backed provider/bloc via the [notifications] parameter — no
-/// notifications backend/table exists yet anywhere in this app, so every
-/// current caller passes nothing and the empty state is what customers
-/// actually see (this used to fall back to fabricated sample
-/// notifications instead, shown to every real customer with no real
-/// notifications feature behind them).
+/// state when there's nothing to show. When [notifications] isn't passed
+/// (every current caller), it self-loads the signed-in customer's real
+/// notifications from `NotificationRepository` (customer_notifications
+/// table) — replacing what used to always be the empty state, since no
+/// backend for this existed until supabase/customer_notifications.sql.
+/// [notifications] stays available for callers that already have data,
+/// or want to test this widget without a live Supabase session.
 class NotificationScreen extends StatefulWidget {
   final List<NotificationModel>? notifications;
   final Future<void> Function()? onRefresh;
@@ -32,11 +34,26 @@ class NotificationScreen extends StatefulWidget {
 
 class _NotificationScreenState extends State<NotificationScreen> {
   late List<NotificationModel> _items;
+  NotificationRepository? _repo;
 
   @override
   void initState() {
     super.initState();
     _items = List<NotificationModel>.from(widget.notifications ?? const []);
+    if (widget.notifications == null) {
+      _repo = NotificationRepository(Supabase.instance.client);
+      _loadReal();
+    }
+  }
+
+  Future<void> _loadReal() async {
+    try {
+      final real = await _repo!.fetchMyNotifications();
+      if (!mounted) return;
+      setState(() => _items = real);
+    } catch (_) {
+      // Leave empty — the screen's own empty state is the honest fallback.
+    }
   }
 
   @override
@@ -55,6 +72,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     setState(() {
       _items = _items.map((n) => n.copyWith(isRead: true)).toList();
     });
+    _repo?.markAllAsRead();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('All notifications marked as read'),
@@ -72,6 +90,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
           _items[index] = _items[index].copyWith(isRead: true);
         }
       });
+      _repo?.markAsRead(notification.id);
     }
     widget.onNotificationTap?.call(notification);
   }
@@ -141,7 +160,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
       body: isEmpty
           ? const _EmptyState()
           : RefreshIndicator(
-              onRefresh: widget.onRefresh ?? () async {},
+              onRefresh: widget.onRefresh ?? (_repo != null ? _loadReal : () async {}),
               child: ListView(
                 padding: const EdgeInsets.only(top: 8, bottom: 24),
                 children: [
