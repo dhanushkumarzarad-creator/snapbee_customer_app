@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/membership_constants.dart';
+import '../../data/repositories/customer_repository.dart';
+import '../../data/repositories/notification_repository.dart';
 import '../../data/repositories/order_repository.dart';
+import '../../models/customer_model.dart';
 import '../notification/notification_screen.dart';
 import '../orders/orders_screen.dart';
 import '../wishlist/wishlist_screen.dart';
@@ -10,8 +13,94 @@ import '../order_history/order_history_screen.dart';
 import '../order_history/models/order_history_model.dart';
 import 'widgets/membership_card.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final _customerRepository = CustomerRepository(Supabase.instance.client);
+  final _notificationRepository = NotificationRepository(Supabase.instance.client);
+
+  CustomerModel? _customer;
+  bool _loadingCustomer = true;
+  int _unreadNotifications = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCustomer();
+    _loadUnreadCount();
+  }
+
+  /// Profile previously showed a hardcoded name/phone/member-ID/tier/wallet
+  /// regardless of who was signed in — `CustomerRepository.fetchByAuthUserId`
+  /// already existed (used by signup) but nothing on this screen called it.
+  Future<void> _loadCustomer() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      setState(() => _loadingCustomer = false);
+      return;
+    }
+    try {
+      final customer = await _customerRepository.fetchByAuthUserId(user.id);
+      if (!mounted) return;
+      setState(() {
+        _customer = customer;
+        _loadingCustomer = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingCustomer = false);
+    }
+  }
+
+  /// The bell's badge previously showed a hardcoded "3" for every customer
+  /// regardless of their real `customer_notifications` rows.
+  Future<void> _loadUnreadCount() async {
+    try {
+      final notifications = await _notificationRepository.fetchMyNotifications();
+      if (!mounted) return;
+      setState(() {
+        _unreadNotifications = notifications.where((n) => !n.isRead).length;
+      });
+    } catch (_) {
+      // Leave at 0 — an honest "nothing to show" beats a fabricated count.
+    }
+  }
+
+  void _comingSoon(String feature) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$feature is coming soon.')),
+    );
+  }
+
+  Future<void> _logout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Log out?'),
+        content: const Text('You will need to sign in again to place orders.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context, rootNavigator: true).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context, rootNavigator: true).pop(true),
+            child: const Text('Log out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    // No explicit navigation needed: main.dart's `_AuthGate` listens to
+    // `onAuthStateChange` and swaps back to LoginScreen the moment this
+    // sign-out event fires.
+    await Supabase.instance.client.auth.signOut();
+  }
 
   /// OrderHistoryScreen falls back to fabricated sample orders when opened
   /// with no `orders` passed in — fetch this customer's real order history
@@ -35,6 +124,14 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final customer = _customer;
+    final tier = customer?.membershipTier ?? MembershipTier.bronze;
+    final completedOrders = customer?.completedOrders ?? 0;
+    final displayName = customer?.fullName ?? (_loadingCustomer ? 'Loading…' : 'SnapBee Customer');
+    final displayPhone = customer != null ? '+91 ${customer.mobileNumber}' : '—';
+    final displayMemberId = customer?.customerCode ?? '—';
+    final walletBalance = customer?.walletBalance ?? 0;
+
     return Scaffold(
       backgroundColor: const Color(0xffF6F6F6),
       appBar: AppBar(
@@ -59,31 +156,32 @@ class ProfileScreen extends StatelessWidget {
                     MaterialPageRoute(
                       builder: (context) => const NotificationScreen(),
                     ),
-                  );
+                  ).then((_) => _loadUnreadCount());
                 },
                 icon: const Icon(
                   Icons.notifications_none,
                   color: Colors.black,
                 ),
               ),
-              Positioned(
-                right: 8,
-                top: 8,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: const BoxDecoration(
-                    color: AppColors.primaryOrange,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Text(
-                    "3",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
+              if (_unreadNotifications > 0)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: AppColors.primaryOrange,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      _unreadNotifications > 9 ? '9+' : '$_unreadNotifications',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                      ),
                     ),
                   ),
                 ),
-              )
             ],
           )
         ],
@@ -162,9 +260,9 @@ class ProfileScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          "Dhanush Kumar",
-                          style: TextStyle(
+                        Text(
+                          displayName,
+                          style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w700,
                             color: AppColors.textPrimary,
@@ -182,9 +280,9 @@ class ProfileScreen extends StatelessWidget {
                             ),
                             borderRadius: BorderRadius.circular(20),
                           ),
-                          child: const Text(
-                            "🥉 Bronze Bee",
-                            style: TextStyle(
+                          child: Text(
+                            "${_tierEmoji(tier)} ${tier.label} Bee",
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 11.5,
                               fontWeight: FontWeight.w600,
@@ -194,13 +292,13 @@ class ProfileScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          "+91 9876543210",
+                          displayPhone,
                           style: TextStyle(
                               color: AppColors.textSecondary, fontSize: 13),
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          "Member ID : SNB000000001",
+                          "Member ID : $displayMemberId",
                           style: TextStyle(
                               color: AppColors.textSecondary, fontSize: 12.5),
                         ),
@@ -213,11 +311,11 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 15),
 
             MembershipCard(
-              tier: MembershipTier.bronze,
-              totalOrders: 0,
+              tier: tier,
+              totalOrders: completedOrders,
               benefitsCount: 3,
-              ordersToNextTier: MembershipThresholds.ordersToNextTier(0),
-              progress: MembershipThresholds.progressWithinTier(0),
+              ordersToNextTier: MembershipThresholds.ordersToNextTier(completedOrders),
+              progress: MembershipThresholds.progressWithinTier(completedOrders),
             ),
             const SizedBox(height: 18),
 
@@ -252,11 +350,11 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 14),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           "SnapBee Wallet",
                           style: TextStyle(
                             fontWeight: FontWeight.w700,
@@ -264,9 +362,9 @@ class ProfileScreen extends StatelessWidget {
                             color: AppColors.textPrimary,
                           ),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         Text(
-                          "Balance ₹0.00",
+                          "Balance ₹${walletBalance.toStringAsFixed(2)}",
                           style: TextStyle(
                             color: AppColors.textSecondary,
                           ),
@@ -275,7 +373,7 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   ),
                   ElevatedButton(
-                    onPressed: () {},
+                    onPressed: () => _comingSoon('Adding money to your wallet'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primaryOrange,
                       foregroundColor: Colors.white,
@@ -321,26 +419,31 @@ class ProfileScreen extends StatelessWidget {
                     Icons.local_offer,
                     "Coupons",
                     AppColors.primaryOrange,
+                    onTap: () => _comingSoon('Coupons'),
                   ),
                   _quickAction(
                     Icons.card_giftcard,
                     "Rewards",
                     Colors.green,
+                    onTap: () => _comingSoon('Rewards'),
                   ),
                   _quickAction(
                     Icons.people,
                     "Refer",
                     Colors.blue,
+                    onTap: () => _comingSoon('Referrals'),
                   ),
                   _quickAction(
                     Icons.support_agent,
                     "Support",
                     Colors.red,
+                    onTap: () => _comingSoon('Support'),
                   ),
                   _quickAction(
                     Icons.location_on,
                     "Address",
                     Colors.deepPurple,
+                    onTap: () => _comingSoon('Saved addresses'),
                   ),
                   _quickAction(
                     Icons.favorite,
@@ -365,11 +468,7 @@ class ProfileScreen extends StatelessWidget {
                     Icons.more_horiz,
                     "More",
                     Colors.grey,
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('More options are coming soon.')),
-                      );
-                    },
+                    onTap: () => _comingSoon('More options'),
                   ),
                 ],
               ),
@@ -421,11 +520,16 @@ class ProfileScreen extends StatelessWidget {
                       },
                     ),
                     const Divider(height: 1),
-                    _menuTile(Icons.location_on_outlined, "Saved Addresses"),
+                    _menuTile(
+                      Icons.location_on_outlined,
+                      "Saved Addresses",
+                      onTap: () => _comingSoon('Saved addresses'),
+                    ),
                     const Divider(height: 1),
                     _menuTile(
                       Icons.account_balance_wallet_outlined,
                       "Payments",
+                      onTap: () => _comingSoon('Payment methods'),
                     ),
                     const Divider(height: 1),
                     _menuTile(
@@ -437,15 +541,27 @@ class ProfileScreen extends StatelessWidget {
                           MaterialPageRoute(
                             builder: (context) => const NotificationScreen(),
                           ),
-                        );
+                        ).then((_) => _loadUnreadCount());
                       },
                     ),
                     const Divider(height: 1),
-                    _menuTile(Icons.settings_outlined, "Settings"),
+                    _menuTile(
+                      Icons.settings_outlined,
+                      "Settings",
+                      onTap: () => _comingSoon('Settings'),
+                    ),
                     const Divider(height: 1),
-                    _menuTile(Icons.help_outline, "Help & Support"),
+                    _menuTile(
+                      Icons.help_outline,
+                      "Help & Support",
+                      onTap: () => _comingSoon('Help & Support'),
+                    ),
                     const Divider(height: 1),
-                    _menuTile(Icons.info_outline, "About SnapBee"),
+                    _menuTile(
+                      Icons.info_outline,
+                      "About SnapBee",
+                      onTap: () => _comingSoon('About SnapBee'),
+                    ),
                   ],
                 ),
               ),
@@ -458,7 +574,7 @@ class ProfileScreen extends StatelessWidget {
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: () {},
+                  onPressed: _logout,
                   icon: const Icon(Icons.logout),
                   label: const Text("Logout"),
                   style: ElevatedButton.styleFrom(
@@ -478,6 +594,19 @@ class ProfileScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  static String _tierEmoji(MembershipTier tier) {
+    switch (tier) {
+      case MembershipTier.bronze:
+        return '🥉';
+      case MembershipTier.silver:
+        return '🥈';
+      case MembershipTier.gold:
+        return '🥇';
+      case MembershipTier.platinum:
+        return '💎';
+    }
   }
 
   static Widget _menuTile(
