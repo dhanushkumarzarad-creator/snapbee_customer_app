@@ -23,7 +23,7 @@ class HeroBannerWidget extends StatelessWidget {
     this.ctaLabel = 'Order Now',
     this.onCtaTap,
     this.mascotImageUrl,
-    this.pageCount = 3,
+    this.pageCount = 1,
     this.currentPage = 0,
   });
 
@@ -139,23 +139,27 @@ class HeroBannerWidget extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(pageCount, (i) {
-              final active = i == currentPage;
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                margin: const EdgeInsets.symmetric(horizontal: 3),
-                width: active ? 16 : 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: active ? AppColors.primaryOrange : AppColors.divider,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              );
-            }),
-          ),
+          // Page dots only make sense once this is a real multi-banner
+          // carousel — a single static banner shows none.
+          if (pageCount > 1) ...[
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(pageCount, (i) {
+                final active = i == currentPage;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  width: active ? 16 : 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: active ? AppColors.primaryOrange : AppColors.divider,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                );
+              }),
+            ),
+          ],
         ],
       ),
     );

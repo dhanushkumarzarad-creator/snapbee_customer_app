@@ -26,7 +26,10 @@ class TrendingProductsWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = products ?? ProductModel.sampleProducts();
+    // Null = still loading or the catalog fetch failed; empty = loaded but
+    // nothing trending. Either way, render nothing rather than a hardcoded
+    // sample list.
+    final items = products ?? const <ProductModel>[];
     final theme = Theme.of(context);
 
     if (items.isEmpty) return const SizedBox.shrink();

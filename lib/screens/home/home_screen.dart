@@ -33,7 +33,6 @@ class _HomeScreenState extends State<HomeScreen> {
   final _categoryRepo = CategoryRepository(Supabase.instance.client);
   final _productRepo = ProductRepository(Supabase.instance.client);
 
-  int _bannerPage = 0;
   List<CategoryItem>? _categories;
   List<ProductModel>? _trendingProducts;
 
@@ -161,12 +160,10 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 4),
 
               HeroBannerWidget(
-                currentPage: _bannerPage,
-                onCtaTap: () {
-                  setState(() {
-                    _bannerPage = (_bannerPage + 1) % 3;
-                  });
-                },
+                onCtaTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const CategoryScreen()),
+                ),
               ),
 
               const SizedBox(height: 16),
