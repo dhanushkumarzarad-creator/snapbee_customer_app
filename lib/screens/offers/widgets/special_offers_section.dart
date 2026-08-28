@@ -28,7 +28,8 @@ class SpecialOffersSection extends StatelessWidget {
         SectionHeader(title: 'Special Offers', onViewAllTap: onViewAllTap),
         const SizedBox(height: 12),
         SizedBox(
-          height: 190,
+          // Card's natural height is ~196 at default text scale; 190 clipped it.
+          height: 200,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),

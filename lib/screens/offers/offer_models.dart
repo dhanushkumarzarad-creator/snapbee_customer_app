@@ -23,16 +23,23 @@ class SpecialOfferProduct {
   final double offerPrice;
   final double oldPrice;
 
+  /// Needed to add the product to the (single-vendor) cart.
+  final String vendorId;
+  final String unit;
+
   const SpecialOfferProduct({
     required this.id,
     required this.name,
     required this.imageUrl,
     required this.offerPrice,
     required this.oldPrice,
+    this.vendorId = '',
+    this.unit = '',
   });
 
-  int get discountPercent =>
-      (((oldPrice - offerPrice) / oldPrice) * 100).round();
+  int get discountPercent => oldPrice <= 0
+      ? 0
+      : (((oldPrice - offerPrice) / oldPrice) * 100).round();
 }
 
 /// A quick promo tile, e.g. "Free Delivery" or "Best % Offers".
