@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../data/cart/cart_store.dart';
+import '../../data/repositories/wishlist_repository.dart';
 import '../../widgets/catalog_image.dart';
 import '../home/widgets/product_model.dart';
 import '../cart/cart_screen.dart';
@@ -21,6 +23,68 @@ class ProductDetailsScreen extends StatefulWidget {
 
 class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   int _quantity = 1;
+
+  final WishlistSource _wishlist = WishlistRepository(Supabase.instance.client);
+
+  /// null until the initial check resolves; false when signed out (the
+  /// toggle then prompts to sign in).
+  bool? _wishlisted;
+  bool _wishlistBusy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWishlistState();
+  }
+
+  Future<void> _loadWishlistState() async {
+    try {
+      final ids = await _wishlist.fetchWishlistedProductIds();
+      if (!mounted) return;
+      setState(() => _wishlisted = ids.contains(widget.product.id));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _wishlisted = false);
+    }
+  }
+
+  Future<void> _toggleWishlist() async {
+    if (_wishlistBusy) return;
+    final current = _wishlisted ?? false;
+    setState(() {
+      _wishlistBusy = true;
+      _wishlisted = !current;
+    });
+    try {
+      if (current) {
+        await _wishlist.remove(widget.product.id);
+      } else {
+        await _wishlist.add(widget.product.id);
+      }
+      _showSnack(current ? 'Removed from wishlist' : 'Added to wishlist');
+    } on WishlistUnavailableException {
+      if (!mounted) return;
+      setState(() => _wishlisted = current);
+      _showSnack('Sign in to use your wishlist.');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _wishlisted = current);
+      _showSnack('Could not update your wishlist: $error');
+    } finally {
+      if (mounted) setState(() => _wishlistBusy = false);
+    }
+  }
+
+  void _showSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
 
   void _changeQuantity(int delta) {
     setState(() {
@@ -130,7 +194,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _ProductHeroImage(product: product),
+                    _ProductHeroImage(
+                      product: product,
+                      isWishlisted: _wishlisted,
+                      onToggleWishlist: _toggleWishlist,
+                    ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
                       child: Column(
@@ -282,8 +350,14 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
 class _ProductHeroImage extends StatelessWidget {
   final ProductModel product;
+  final bool? isWishlisted;
+  final VoidCallback onToggleWishlist;
 
-  const _ProductHeroImage({required this.product});
+  const _ProductHeroImage({
+    required this.product,
+    required this.isWishlisted,
+    required this.onToggleWishlist,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -340,12 +414,24 @@ class _ProductHeroImage extends StatelessWidget {
         Positioned(
           top: 8,
           right: 8,
-          child: _CircleIconButton(
-            icon: Icons.shopping_cart_outlined,
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const CartScreen()),
-            ),
+          child: Row(
+            children: [
+              _CircleIconButton(
+                icon: isWishlisted == true
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+                iconColor: isWishlisted == true ? theme.colorScheme.error : null,
+                onTap: onToggleWishlist,
+              ),
+              const SizedBox(width: 8),
+              _CircleIconButton(
+                icon: Icons.shopping_cart_outlined,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const CartScreen()),
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -356,8 +442,13 @@ class _ProductHeroImage extends StatelessWidget {
 class _CircleIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
+  final Color? iconColor;
 
-  const _CircleIconButton({required this.icon, required this.onTap});
+  const _CircleIconButton({
+    required this.icon,
+    required this.onTap,
+    this.iconColor,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -370,7 +461,7 @@ class _CircleIconButton extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(9),
-          child: Icon(icon, color: AppColors.textPrimary, size: 20),
+          child: Icon(icon, color: iconColor ?? AppColors.textPrimary, size: 20),
         ),
       ),
     );

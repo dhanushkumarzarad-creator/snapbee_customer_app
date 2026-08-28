@@ -1,28 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../data/cart/cart_store.dart';
+import '../../data/repositories/wishlist_repository.dart';
 import 'models/wishlist_model.dart';
 import 'widgets/wishlist_item_card.dart';
 
-/// Premium wishlist screen for the SnapBee Customer App — modeled after
-/// Blinkit / Zepto / Swiggy Instamart saved-items screens.
-///
-/// Wire this up to real data by passing [initialItems] from your
-/// Supabase-backed wishlist provider/bloc and handling [onMoveToCart] /
-/// [onMoveAllToCart]. Falls back to sample data for previewing.
+/// The customer's saved products, backed by [WishlistRepository]
+/// (`customer_wishlists`). Real load / remove / move-to-cart — no more
+/// local sample data.
 class WishlistScreen extends StatefulWidget {
-  final List<WishlistItemModel>? initialItems;
-  final void Function(WishlistItemModel item)? onMoveToCart;
-  final void Function(List<WishlistItemModel> items)? onMoveAllToCart;
   final void Function(WishlistItemModel item)? onOpenProduct;
   final VoidCallback? onStartShopping;
 
+  /// Injectable for tests; defaults to the real Supabase-backed repository.
+  final WishlistSource? source;
+
   const WishlistScreen({
     super.key,
-    this.initialItems,
-    this.onMoveToCart,
-    this.onMoveAllToCart,
     this.onOpenProduct,
     this.onStartShopping,
+    this.source,
   });
 
   @override
@@ -30,60 +28,110 @@ class WishlistScreen extends StatefulWidget {
 }
 
 class _WishlistScreenState extends State<WishlistScreen> {
-  late List<WishlistItemModel> _items;
+  late final WishlistSource _repo =
+      widget.source ?? WishlistRepository(Supabase.instance.client);
+
+  bool _loading = true;
+  Object? _error;
+  List<WishlistItemModel> _items = const [];
 
   @override
   void initState() {
     super.initState();
-    _items = List<WishlistItemModel>.from(
-      widget.initialItems ?? _sampleItems(),
-    );
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final items = await _repo.fetchWishlist();
+      if (!mounted) return;
+      setState(() {
+        _items = items;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error;
+        _loading = false;
+      });
+    }
   }
 
   bool get _isEmpty => _items.isEmpty;
 
   int get _inStockCount => _items.where((i) => i.inStock).length;
 
-  void _removeItem(WishlistItemModel item) {
-    setState(() => _items.removeWhere((i) => i.id == item.id));
+  void _snack(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('${item.name} removed from wishlist'),
+        content: Text(message),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
       ),
     );
   }
 
-  void _moveToCart(WishlistItemModel item) {
-    setState(() => _items.removeWhere((i) => i.id == item.id));
-    widget.onMoveToCart?.call(item);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${item.name} moved to cart'),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-      ),
-    );
+  Future<void> _removeItem(WishlistItemModel item) async {
+    final previous = _items;
+    setState(() => _items = _items.where((i) => i.id != item.id).toList());
+    try {
+      await _repo.remove(item.productId);
+      _snack('${item.name} removed from wishlist');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _items = previous);
+      _snack('Could not remove ${item.name}: $error');
+    }
   }
 
-  void _moveAllToCart() {
-    final moved = _items.where((i) => i.inStock).toList();
-    if (moved.isEmpty) return;
-
-    setState(() {
-      _items.removeWhere((i) => i.inStock);
-    });
-    widget.onMoveAllToCart?.call(moved);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '${moved.length} item${moved.length == 1 ? '' : 's'} moved to cart',
-        ),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-      ),
+  /// Adds the item to the real cart (single-vendor: refuses to mix
+  /// stores), then drops it from the wishlist.
+  Future<void> _moveToCart(WishlistItemModel item) async {
+    if (!item.inStock) {
+      _snack('${item.name} is out of stock.');
+      return;
+    }
+    if (item.vendorId.isEmpty) {
+      _snack('${item.name} can\'t be added right now.');
+      return;
+    }
+    final result = CartStore.instance.addItem(
+      productId: item.productId,
+      name: item.name,
+      imageUrl: item.imageUrl,
+      unit: item.unit,
+      price: item.price,
+      originalPrice: item.originalPrice,
+      vendorId: item.vendorId,
     );
+    if (result == CartAddResult.vendorConflict) {
+      _snack('Your cart already has items from another store.');
+      return;
+    }
+    final previous = _items;
+    setState(() => _items = _items.where((i) => i.id != item.id).toList());
+    try {
+      await _repo.remove(item.productId);
+      _snack('${item.name} moved to cart');
+    } catch (_) {
+      // The item is in the cart; leaving it in the wishlist too is the
+      // safe failure — just restore and tell the user.
+      if (!mounted) return;
+      setState(() => _items = previous);
+      _snack('${item.name} added to cart (still in your wishlist).');
+    }
+  }
+
+  Future<void> _moveAllToCart() async {
+    for (final item in _items.where((i) => i.inStock).toList()) {
+      await _moveToCart(item);
+    }
   }
 
   Future<void> _confirmClearWishlist() async {
@@ -114,16 +162,18 @@ class _WishlistScreenState extends State<WishlistScreen> {
       ),
     );
 
-    if (confirmed == true) {
-      setState(() => _items.clear());
+    if (confirmed != true) return;
+    final previous = _items;
+    setState(() => _items = const []);
+    try {
+      for (final item in previous) {
+        await _repo.remove(item.productId);
+      }
+      _snack('Wishlist cleared');
+    } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Wishlist cleared'),
-          behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      setState(() => _items = previous);
+      _snack('Could not clear the wishlist: $error');
     }
   }
 
@@ -145,7 +195,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
         ),
         scrolledUnderElevation: 1,
         actions: [
-          if (!_isEmpty)
+          if (!_isEmpty && !_loading && _error == null)
             TextButton(
               onPressed: _confirmClearWishlist,
               child: Text(
@@ -158,104 +208,84 @@ class _WishlistScreenState extends State<WishlistScreen> {
             ),
         ],
       ),
-      body: SafeArea(
-        child: _isEmpty
-            ? _EmptyWishlistState(onStartShopping: widget.onStartShopping)
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  final bool isWide = constraints.maxWidth >= 720;
-                  final content = ListView(
-                    padding: const EdgeInsets.only(top: 8, bottom: 16),
-                    children: [
-                      if (_inStockCount > 0)
-                        _MoveAllToCartBar(
-                          count: _inStockCount,
-                          onMoveAll: _moveAllToCart,
-                        ),
-                      const SizedBox(height: 4),
-                      if (isWide)
-                        _ResponsiveGrid(
-                          items: _items,
-                          onMoveToCart: _moveToCart,
-                          onRemove: _removeItem,
-                          onOpenProduct: widget.onOpenProduct,
-                        )
-                      else
-                        ..._items.map(
-                          (item) => WishlistItemCard(
-                            item: item,
-                            onMoveToCart: () => _moveToCart(item),
-                            onRemove: () => _removeItem(item),
-                            onTap: widget.onOpenProduct == null
-                                ? null
-                                : () => widget.onOpenProduct!(item),
-                          ),
-                        ),
-                    ],
-                  );
-
-                  if (!isWide) return content;
-
-                  return Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 1000),
-                      child: content,
-                    ),
-                  );
-                },
-              ),
-      ),
+      body: SafeArea(child: _body(theme)),
     );
   }
 
-  List<WishlistItemModel> _sampleItems() {
-    final now = DateTime.now();
-    return [
-      WishlistItemModel(
-        id: 'w1',
-        productId: 'p1',
-        name: 'Nestle Everyday Dairy Whitener',
-        imageUrl: '',
-        storeName: 'SnapBee Daily Essentials',
-        unit: '400 g Pack',
-        price: 178,
-        originalPrice: 210,
-        addedAt: now.subtract(const Duration(hours: 2)),
+  Widget _body(ThemeData theme) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      final isAuth = _error is WishlistUnavailableException;
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline, size: 44, color: theme.colorScheme.outline),
+              const SizedBox(height: 12),
+              Text(
+                isAuth ? 'Sign in to use your wishlist.' : "Couldn't load your wishlist.",
+                textAlign: TextAlign.center,
+              ),
+              if (!isAuth) ...[
+                const SizedBox(height: 12),
+                OutlinedButton(onPressed: _load, child: const Text('Retry')),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+    if (_isEmpty) {
+      return _EmptyWishlistState(onStartShopping: widget.onStartShopping);
+    }
+
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final bool isWide = constraints.maxWidth >= 720;
+          final content = ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.only(top: 8, bottom: 16),
+            children: [
+              if (_inStockCount > 0)
+                _MoveAllToCartBar(count: _inStockCount, onMoveAll: _moveAllToCart),
+              const SizedBox(height: 4),
+              if (isWide)
+                _ResponsiveGrid(
+                  items: _items,
+                  onMoveToCart: _moveToCart,
+                  onRemove: _removeItem,
+                  onOpenProduct: widget.onOpenProduct,
+                )
+              else
+                ..._items.map(
+                  (item) => WishlistItemCard(
+                    item: item,
+                    onMoveToCart: () => _moveToCart(item),
+                    onRemove: () => _removeItem(item),
+                    onTap: widget.onOpenProduct == null
+                        ? null
+                        : () => widget.onOpenProduct!(item),
+                  ),
+                ),
+            ],
+          );
+
+          if (!isWide) return content;
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1000),
+              child: content,
+            ),
+          );
+        },
       ),
-      WishlistItemModel(
-        id: 'w2',
-        productId: 'p2',
-        name: 'Philips Air Fryer HD9200',
-        imageUrl: '',
-        storeName: 'SnapBee Electronics',
-        unit: '4.1 L',
-        price: 5999,
-        originalPrice: 7495,
-        addedAt: now.subtract(const Duration(days: 1)),
-      ),
-      WishlistItemModel(
-        id: 'w3',
-        productId: 'p3',
-        name: 'Himalaya Neem Face Wash',
-        imageUrl: '',
-        storeName: 'SnapBee Pharmacy',
-        unit: '150 ml',
-        price: 145,
-        addedAt: now.subtract(const Duration(days: 2)),
-      ),
-      WishlistItemModel(
-        id: 'w4',
-        productId: 'p4',
-        name: 'Boat Rockerz 450 Headphones',
-        imageUrl: '',
-        storeName: 'SnapBee Electronics',
-        unit: 'Wireless',
-        price: 1299,
-        originalPrice: 1990,
-        inStock: false,
-        addedAt: now.subtract(const Duration(days: 4)),
-      ),
-    ];
+    );
   }
 }
 
@@ -334,7 +364,8 @@ class _ResponsiveGrid extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 4),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        childAspectRatio: 2.35,
+        // 2.35 clipped the card content by ~30px; 2.0 gives it room.
+        childAspectRatio: 2.0,
         mainAxisSpacing: 0,
         crossAxisSpacing: 0,
       ),

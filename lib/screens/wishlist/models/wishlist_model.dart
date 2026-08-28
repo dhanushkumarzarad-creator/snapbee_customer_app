@@ -19,6 +19,9 @@ class WishlistItemModel {
   final bool inStock;
   final DateTime addedAt;
 
+  /// The product's vendor — needed to add it to the single-vendor cart.
+  final String vendorId;
+
   const WishlistItemModel({
     required this.id,
     required this.productId,
@@ -30,6 +33,7 @@ class WishlistItemModel {
     this.originalPrice,
     this.inStock = true,
     required this.addedAt,
+    this.vendorId = '',
   });
 
   /// Discount percentage vs. original price, rounded to nearest whole number.
