@@ -3,14 +3,10 @@
 ///
 /// Layout:
 ///  1. SnapBee AppBar (back, title, history, favourite, cart+badge)
-///  2. Active Orders list (OrderCard)
-///  3. Related Products (horizontal, Offer-Zone style)
-///  4. Nearby Stores (horizontal, Offer-Zone style)
-///  5. SnapBee bottom navigation
+///  2. Active Orders list (OrderCard) from OrderRepository
+///  3. SnapBee bottom navigation
 ///
-/// Presentation-layer only (Clean Architecture): screen composes
-/// reusable widgets and reads from a data source (DummyOrderData here,
-/// swap for a real OrdersRepository later) — no business logic lives
+/// Presentation-layer only (Clean Architecture): no business logic lives
 /// in the widget tree itself.
 library;
 
@@ -18,11 +14,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/repositories/order_repository.dart';
 import 'order_models.dart';
-import 'dummy_order_data.dart';
 import 'order_card.dart';
 import 'order_details_screen.dart';
-import 'related_products_section.dart';
-import 'nearby_store_section.dart';
 import '../cart/cart_screen.dart';
 import '../wishlist/wishlist_screen.dart';
 import '../order_history/order_history_screen.dart';
@@ -44,14 +37,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
   List<OrderModel> _activeOrders = const [];
   bool _isLoading = true;
   String? _errorMessage;
-
-  // Recommendation-style content only — genuinely unrelated to the order
-  // pipeline (no vendor/order backing these yet), so these stay on the
-  // existing dummy source; only `_activeOrders` above (the real "did I
-  // actually place an order" question) is wired to Supabase.
-  final List<RelatedProductModel> _relatedProducts =
-      DummyOrderData.relatedProducts;
-  final List<NearbyStoreModel> _nearbyStores = DummyOrderData.nearbyStores;
 
   @override
   void initState() {
@@ -161,12 +146,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
     );
   }
 
-  void _handleAddProduct(RelatedProductModel product) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('${product.name} added to cart')));
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -216,13 +195,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       ),
                     ),
                   const SizedBox(height: 12),
-                  RelatedProductsSection(
-                    products: _relatedProducts,
-                    onAdd: _handleAddProduct,
-                    onViewAll: () {},
-                  ),
-                  const SizedBox(height: 8),
-                  NearbyStoreSection(stores: _nearbyStores, onViewAll: () {}),
                 ],
               ),
             ),
