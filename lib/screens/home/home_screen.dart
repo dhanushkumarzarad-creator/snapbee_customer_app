@@ -11,11 +11,8 @@ import '../../widgets/customer_search_bar.dart';
 import '../notification/notification_screen.dart';
 import 'widgets/service_tabs_widget.dart';
 import 'widgets/hero_banner_widget.dart';
-import 'widgets/quick_actions_widget.dart';
 import 'widgets/category_grid_widget.dart';
-import 'widgets/featured_store_widget.dart';
 import 'widgets/trending_products_widget.dart';
-import 'widgets/flash_sale_widget.dart';
 import 'widgets/product_model.dart';
 import '../cart/cart_screen.dart';
 import '../products/product_details_screen.dart';
@@ -84,7 +81,8 @@ class _HomeScreenState extends State<HomeScreen> {
         _trendingProducts = [for (final p in products) ProductModel.fromRow(p)];
       });
     } catch (_) {
-      // Leave null; TrendingProductsWidget keeps its own built-in defaults.
+      // Leave null; TrendingProductsWidget renders nothing until real
+      // products load — it never falls back to sample data.
     }
   }
 
@@ -168,10 +166,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: 16),
 
-              QuickActionsWidget(onActionTap: (index) {}),
-
-              const SizedBox(height: 22),
-
               CategoryGridWidget(
                 categories: _categories ?? const [],
                 isLoading: _categories == null,
@@ -191,10 +185,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: 22),
 
-              FeaturedStoreWidget(onSeeAll: () {}, onStoreTap: (index) {}),
-
-              const SizedBox(height: 20),
-
               TrendingProductsWidget(
                 products: _trendingProducts,
                 onProductTap: (product) => Navigator.push(
@@ -205,17 +195,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 onSeeAllPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const FeaturedProductsScreen(),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              FlashSaleWidget(
-                onShopTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => const FeaturedProductsScreen(),

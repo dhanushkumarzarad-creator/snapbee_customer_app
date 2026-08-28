@@ -92,11 +92,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
     );
   }
 
-  /// OrderHistoryScreen falls back to fabricated sample orders (fake
-  /// vendor names, fake order numbers, fake amounts) whenever it's opened
-  /// with no `orders` passed in — which both "History" entry points below
-  /// used to do. Fetches this customer's real order history first so the
-  /// screen renders actual account data instead.
+  /// Fetches this customer's real order history and hands it to
+  /// OrderHistoryScreen (which renders an empty state, never sample data,
+  /// when the list is empty).
   Future<void> _openOrderHistory() async {
     List<OrderHistoryModel> history = const [];
     try {

@@ -8,11 +8,11 @@ import '../orders/order_details_screen.dart';
 /// after Blinkit / Swiggy / Zepto past-orders screens.
 ///
 /// Groups orders into Today / Yesterday / This Month / Older Orders.
-/// Wire this up to real data by passing [orders] from your
-/// Supabase-backed order provider/bloc and handling [onViewDetails] /
-/// [onReorder]. Falls back to sample data for previewing.
+/// [orders] is always this customer's real, Supabase-backed history
+/// (an empty list renders the empty state — the screen never fabricates
+/// sample orders).
 class OrderHistoryScreen extends StatefulWidget {
-  final List<OrderHistoryModel>? orders;
+  final List<OrderHistoryModel> orders;
   final Future<void> Function()? onRefresh;
   final void Function(OrderHistoryModel order)? onViewDetails;
   final void Function(OrderHistoryModel order)? onReorder;
@@ -20,7 +20,7 @@ class OrderHistoryScreen extends StatefulWidget {
 
   const OrderHistoryScreen({
     super.key,
-    this.orders,
+    required this.orders,
     this.onRefresh,
     this.onViewDetails,
     this.onReorder,
@@ -32,19 +32,13 @@ class OrderHistoryScreen extends StatefulWidget {
 }
 
 class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
-  late List<OrderHistoryModel> _orders;
-
-  @override
-  void initState() {
-    super.initState();
-    _orders = List<OrderHistoryModel>.from(widget.orders ?? _sampleOrders());
-  }
+  late List<OrderHistoryModel> _orders = List<OrderHistoryModel>.from(widget.orders);
 
   @override
   void didUpdateWidget(covariant OrderHistoryScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.orders != null && widget.orders != oldWidget.orders) {
-      _orders = List<OrderHistoryModel>.from(widget.orders!);
+    if (widget.orders != oldWidget.orders) {
+      _orders = List<OrderHistoryModel>.from(widget.orders);
     }
   }
 
@@ -176,89 +170,6 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
     ];
   }
 
-  /// Sample data used only when the screen isn't wired up to a real
-  /// data source yet — handy for quick previews during development.
-  List<OrderHistoryModel> _sampleOrders() {
-    final now = DateTime.now();
-    return [
-      OrderHistoryModel(
-        id: 'o1',
-        orderNumber: 'SB-ORD-10293',
-        storeName: 'SnapBee Daily Essentials',
-        storeImageUrl: '',
-        placedAt: now.subtract(const Duration(hours: 1)),
-        amount: 482,
-        itemCount: 6,
-        itemsPreview: 'Milk, Bread, Eggs +3 more',
-        paymentStatus: PaymentStatus.paid,
-        deliveryStatus: DeliveryStatus.outForDelivery,
-      ),
-      OrderHistoryModel(
-        id: 'o2',
-        orderNumber: 'SB-ORD-10281',
-        storeName: 'Green Leaf Grocers',
-        storeImageUrl: '',
-        placedAt: now.subtract(const Duration(hours: 5)),
-        amount: 219,
-        itemCount: 4,
-        itemsPreview: 'Tomatoes, Onions, Potatoes +1 more',
-        paymentStatus: PaymentStatus.paid,
-        deliveryStatus: DeliveryStatus.delivered,
-      ),
-      OrderHistoryModel(
-        id: 'o3',
-        orderNumber: 'SB-ORD-10214',
-        storeName: 'Spice Route Kitchen',
-        storeImageUrl: '',
-        placedAt: now.subtract(const Duration(days: 1, hours: 3)),
-        amount: 356,
-        itemCount: 3,
-        itemsPreview: 'Paneer Butter Masala, Naan +1 more',
-        paymentStatus: PaymentStatus.paid,
-        deliveryStatus: DeliveryStatus.delivered,
-      ),
-      OrderHistoryModel(
-        id: 'o4',
-        orderNumber: 'SB-ORD-10166',
-        storeName: 'SnapBee Pharmacy',
-        storeImageUrl: '',
-        placedAt: now.subtract(const Duration(days: 6)),
-        amount: 640,
-        itemCount: 2,
-        itemsPreview: 'Vitamin C Tablets, Face Wash',
-        paymentStatus: PaymentStatus.refunded,
-        deliveryStatus: DeliveryStatus.cancelled,
-      ),
-      OrderHistoryModel(
-        id: 'o5',
-        orderNumber: 'SB-ORD-10042',
-        storeName: 'Urban Electronics Hub',
-        storeImageUrl: '',
-        placedAt: now.subtract(const Duration(days: 12)),
-        amount: 5999,
-        itemCount: 1,
-        itemsPreview: 'Philips Air Fryer HD9200',
-        paymentStatus: PaymentStatus.paid,
-        deliveryStatus: DeliveryStatus.delivered,
-      ),
-      OrderHistoryModel(
-        id: 'o6',
-        orderNumber: 'SB-ORD-09711',
-        storeName: 'SnapBee Daily Essentials',
-        storeImageUrl: '',
-        placedAt: DateTime(
-          now.month == 1 ? now.year - 1 : now.year,
-          now.month == 1 ? 12 : now.month - 1,
-          15,
-        ),
-        amount: 312,
-        itemCount: 5,
-        itemsPreview: 'Rice, Dal, Sugar +2 more',
-        paymentStatus: PaymentStatus.failed,
-        deliveryStatus: DeliveryStatus.cancelled,
-      ),
-    ];
-  }
 }
 
 /// Sticky-feeling section label ("Today", "Yesterday", "This Month", "Older Orders").

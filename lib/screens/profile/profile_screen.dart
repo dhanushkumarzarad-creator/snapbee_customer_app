@@ -102,10 +102,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await Supabase.instance.client.auth.signOut();
   }
 
-  /// OrderHistoryScreen falls back to fabricated sample orders when opened
-  /// with no `orders` passed in — fetch this customer's real order history
-  /// first so Profile's "History" quick action shows actual account data
-  /// instead, same fix as the Orders tab's own History entry points.
+  /// Fetches this customer's real order history so Profile's "History"
+  /// quick action shows actual account data (OrderHistoryScreen renders an
+  /// empty state, never sample data, when the list is empty).
   Future<void> _openOrderHistory(BuildContext context) async {
     List<OrderHistoryModel> history = const [];
     try {

@@ -224,8 +224,10 @@ class _NoOffersState extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       children: [
         SizedBox(height: MediaQuery.of(context).size.height * 0.28),
-        Icon(Icons.local_offer_outlined,
-            size: 56, color: Colors.grey.shade400),
+        Center(
+          child: Icon(Icons.local_offer_outlined,
+              size: 56, color: Colors.grey.shade400),
+        ),
         const SizedBox(height: 16),
         const Center(
           child: Text('No offers right now',
