@@ -27,7 +27,7 @@ class BillSummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final totalSavings = mrpSavings + bill.couponDiscount;
+    final totalSavings = mrpSavings;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -63,13 +63,6 @@ class BillSummaryCard extends StatelessWidget {
             value: bill.platformFee,
             theme: theme,
           ),
-          if (bill.couponDiscount > 0)
-            _BillRow(
-              label: 'Coupon Discount',
-              value: -bill.couponDiscount,
-              theme: theme,
-              valueColor: const Color(0xFF2E7D32),
-            ),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 10),
             child: Divider(height: 1),
@@ -132,14 +125,12 @@ class _BillRow extends StatelessWidget {
   final double value;
   final ThemeData theme;
   final bool isFree;
-  final Color? valueColor;
 
   const _BillRow({
     required this.label,
     required this.value,
     required this.theme,
     this.isFree = false,
-    this.valueColor,
   });
 
   @override
@@ -172,7 +163,7 @@ class _BillRow extends StatelessWidget {
                   amountText,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: valueColor ?? colorScheme.onSurface,
+                    color: colorScheme.onSurface,
                   ),
                 ),
         ],

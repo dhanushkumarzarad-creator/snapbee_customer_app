@@ -117,72 +117,28 @@ class CartItemModel {
   }
 }
 
-/// A coupon/promo code that can be applied to the cart.
-@immutable
-class CouponModel {
-  final String code;
-  final String description;
-
-  /// Flat discount amount in rupees. Use either this or [discountPercent],
-  /// not both.
-  final double? discountAmount;
-
-  /// Percentage discount (0-100). Capped by [maxDiscount] when provided.
-  final double? discountPercent;
-  final double? maxDiscount;
-  final double minOrderValue;
-
-  const CouponModel({
-    required this.code,
-    required this.description,
-    this.discountAmount,
-    this.discountPercent,
-    this.maxDiscount,
-    this.minOrderValue = 0,
-  });
-
-  /// Computes the discount this coupon yields for a given [itemTotal].
-  /// Returns 0 when [itemTotal] doesn't meet [minOrderValue].
-  double discountFor(double itemTotal) {
-    if (itemTotal < minOrderValue) return 0;
-
-    double discount = 0;
-    if (discountAmount != null) {
-      discount = discountAmount!;
-    } else if (discountPercent != null) {
-      discount = itemTotal * (discountPercent! / 100);
-      if (maxDiscount != null && discount > maxDiscount!) {
-        discount = maxDiscount!;
-      }
-    }
-    return discount > itemTotal ? itemTotal : discount;
-  }
-}
-
 /// Aggregates the cart's line items and produces the full bill breakdown
-/// (item total, delivery charge, platform fee, discount, grand total),
-/// plus the free-delivery progress used by the UI.
+/// (item total, delivery charge, platform fee, grand total), plus the
+/// free-delivery progress used by the UI.
+///
+/// No coupon/discount line: there is no server-side coupon logic
+/// (`place_customer_order` takes no coupon and recomputes the total
+/// itself), so the cart must never show a discount it can't honor. Real
+/// coupon codes are surfaced for discovery in the Offer Zone tab.
 @immutable
 class CartBill {
   final double itemTotal;
   final double deliveryCharge;
   final double platformFee;
-  final double couponDiscount;
 
   const CartBill({
     required this.itemTotal,
     required this.deliveryCharge,
     required this.platformFee,
-    required this.couponDiscount,
   });
 
   double get grandTotal =>
-      (itemTotal + deliveryCharge + platformFee - couponDiscount).clamp(
-        0,
-        double.infinity,
-      );
-
-  double get totalSavings => couponDiscount;
+      (itemTotal + deliveryCharge + platformFee).clamp(0, double.infinity);
 }
 
 /// Cart-level configuration and calculation helper.
@@ -229,16 +185,12 @@ class CartCalculator {
     return progress.clamp(0, 1);
   }
 
-  CartBill computeBill(List<CartItemModel> items, {CouponModel? coupon}) {
+  CartBill computeBill(List<CartItemModel> items) {
     final total = itemTotal(items);
-    final delivery = deliveryChargeFor(total);
-    final discount = coupon?.discountFor(total) ?? 0;
-
     return CartBill(
       itemTotal: total,
-      deliveryCharge: delivery,
+      deliveryCharge: deliveryChargeFor(total),
       platformFee: items.any((i) => !i.savedForLater) ? platformFee : 0,
-      couponDiscount: discount,
     );
   }
 }

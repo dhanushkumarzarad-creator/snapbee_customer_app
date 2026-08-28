@@ -9,10 +9,9 @@ import '../theme/service_colors.dart';
 
 /// Dedicated Services Offers page (section 4 of the Services spec) —
 /// mirrors Daily Essentials' Offer Zone app-bar pattern (colored header,
-/// bold title), blue-themed. Unlike Daily Essentials' own Offer Zone
-/// (which renders entirely from `DummyOfferData` today), every card here
-/// is a real `service_offers` row from `ServicesCatalogRepository` — no
-/// fabricated banners/categories this schema has no backing model for.
+/// bold title), blue-themed. Every card here is a real `service_offers`
+/// row from `ServicesCatalogRepository` — no fabricated banners/categories
+/// this schema has no backing model for.
 class ServicesOffersScreen extends StatefulWidget {
   const ServicesOffersScreen({super.key});
 
