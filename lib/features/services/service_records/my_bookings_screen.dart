@@ -5,6 +5,7 @@ import '../data/services_booking_repository.dart';
 import '../models/service_booking.dart';
 import '../theme/service_colors.dart';
 import '../tracking/booking_detail_screen.dart';
+import 'recurring_plans_screen.dart';
 
 /// Section 5 of the Services spec: a dedicated Services order/history
 /// experience ("Service Orders"), separate from Daily Essentials'
@@ -72,6 +73,16 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> with SingleTickerPr
         scrolledUnderElevation: 0,
         iconTheme: const IconThemeData(color: ServiceColors.textPrimary),
         title: const Text('Service Orders', style: TextStyle(color: ServiceColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.event_repeat_outlined),
+            tooltip: 'Recurring plans',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const RecurringPlansScreen()),
+            ),
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           isScrollable: true,

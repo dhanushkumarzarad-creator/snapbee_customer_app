@@ -19,6 +19,7 @@
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/recurring_service_plan.dart';
 import '../models/service_booking.dart';
 import '../models/service_chat_message.dart';
 import '../models/service_invoice.dart';
@@ -270,6 +271,77 @@ class ServicesBookingRepository {
       return row == null ? null : ServiceInvoice.fromJson(Map<String, dynamic>.from(row));
     } catch (_) {
       return null;
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Recurring / AMC plans — create / list / pause / cancel straight through
+  // `recurring_service_plans_customer_self_*` RLS, no RPC.
+  // --------------------------------------------------------------------------
+
+  Future<void> createRecurringPlan({
+    required String serviceId,
+    required String address,
+    required double lat,
+    required double lng,
+    required String frequency, // weekly | biweekly | monthly | quarterly | custom
+    int? customIntervalDays,
+    bool isAmc = false,
+    required String preferredTimeSlot,
+    required DateTime nextRunDate,
+  }) async {
+    final customerId = await _customerId();
+    if (customerId == null) {
+      throw const ServicesException('Your account is not fully set up yet. Please contact support.');
+    }
+    try {
+      await _client.from('recurring_service_plans').insert({
+        'customer_id': customerId,
+        'service_id': serviceId,
+        'frequency': frequency,
+        'custom_interval_days': customIntervalDays,
+        'is_amc': isAmc,
+        'next_run_date': _dateOnly(nextRunDate),
+        'address': address,
+        'lat': lat,
+        'lng': lng,
+        'preferred_time_slot': preferredTimeSlot,
+      });
+    } on PostgrestException catch (error) {
+      if (error.message.contains('address') || error.message.contains('column')) {
+        throw const ServicesException('Recurring bookings aren\'t available yet. Your one-time booking was still placed.');
+      }
+      throw ServicesException(_mapRpcError(error.message));
+    } catch (_) {
+      throw const ServicesException('Could not set up the recurring plan. Your one-time booking was still placed.');
+    }
+  }
+
+  Future<List<RecurringServicePlan>> fetchMyRecurringPlans() async {
+    try {
+      final rows = await _client
+          .from('recurring_service_plans')
+          .select('*, services(name)')
+          .order('next_run_date', ascending: true);
+      return (rows as List)
+          .map((r) => RecurringServicePlan.fromJson(Map<String, dynamic>.from(r as Map)))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// `status` is `active` (resume), `paused`, or `cancelled`.
+  Future<void> setRecurringPlanStatus(String planId, String status) async {
+    try {
+      await _client.from('recurring_service_plans').update({
+        'status': status,
+        if (status == 'cancelled') 'cancelled_at': DateTime.now().toIso8601String(),
+      }).eq('id', planId);
+    } on PostgrestException catch (error) {
+      throw ServicesException(_mapRpcError(error.message));
+    } catch (_) {
+      throw const ServicesException('Could not update the plan. Please try again.');
     }
   }
 

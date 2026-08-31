@@ -15,10 +15,10 @@ import '../service_records/my_bookings_screen.dart';
 /// `create_service_booking`'s own `if v_service.requires_inspection`
 /// branch) — this screen doesn't need to know the difference beyond
 /// showing the "starts with an inspection" notice already on the detail
-/// screen. Recurring/AMC/scheduled/ASAP booking types are real
-/// `booking_types` this schema supports but are not offered here yet — see
-/// SERVICES_ARCHITECTURE.md's remaining-work note; only one_time and
-/// emergency (when the service supports it) are wired.
+/// screen. A "Repeat this service" toggle also creates a
+/// `recurring_service_plans` row (weekly/biweekly/monthly/quarterly) whose
+/// due bookings Services Admin generates; AMC and scheduled/ASAP booking
+/// types are still not surfaced here.
 class BookingFormScreen extends StatefulWidget {
   final ServiceRow service;
 
@@ -42,6 +42,8 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   DateTime? _preferredDate;
   String _timeSlot = 'morning';
   bool _isEmergency = false;
+  bool _isRecurring = false;
+  String _recurringFrequency = 'monthly';
   XFile? _emergencyPhoto;
   Uint8List? _emergencyPhotoBytes;
   bool _isUploadingPhoto = false;
@@ -175,9 +177,30 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
         emergencyProblemMedia: mediaUrls,
         customerNotes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
       );
+      if (_isRecurring && !_isEmergency) {
+        try {
+          await _repo.createRecurringPlan(
+            serviceId: widget.service.id,
+            address: _addressController.text.trim(),
+            lat: _lat!,
+            lng: _lng!,
+            frequency: _recurringFrequency,
+            preferredTimeSlot: _timeSlot,
+            nextRunDate: _nextRunAfter(_preferredDate!, _recurringFrequency),
+          );
+        } on ServicesException catch (planError) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(planError.message)));
+          }
+        }
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Booking confirmed! We are finding a provider for you.')),
+        SnackBar(
+          content: Text(_isRecurring && !_isEmergency
+              ? 'Booking confirmed and a recurring plan was set up.'
+              : 'Booking confirmed! We are finding a provider for you.'),
+        ),
       );
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MyBookingsScreen()));
     } on ServicesException catch (error) {
@@ -194,6 +217,20 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
       });
     }
   }
+
+  static DateTime _nextRunAfter(DateTime from, String frequency) => switch (frequency) {
+        'weekly' => from.add(const Duration(days: 7)),
+        'biweekly' => from.add(const Duration(days: 14)),
+        'quarterly' => DateTime(from.year, from.month + 3, from.day),
+        _ => DateTime(from.year, from.month + 1, from.day), // monthly
+      };
+
+  static const _recurringOptions = [
+    ('weekly', 'Every week'),
+    ('biweekly', 'Every 2 weeks'),
+    ('monthly', 'Every month'),
+    ('quarterly', 'Every 3 months'),
+  ];
 
   static const _timeSlots = [
     ('morning', 'Morning (8 AM - 12 PM)'),
@@ -287,6 +324,26 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
                 ChoiceChip(label: Text(slot.$2), selected: _timeSlot == slot.$1, onSelected: (_) => setState(() => _timeSlot = slot.$1)),
             ],
           ),
+
+          if (!_isEmergency) ...[
+            const SizedBox(height: 16),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Repeat this service', style: TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: const Text('Also set up a recurring plan from this booking', style: TextStyle(fontSize: 12.5)),
+              value: _isRecurring,
+              onChanged: (v) => setState(() => _isRecurring = v),
+            ),
+            if (_isRecurring)
+              DropdownButtonFormField<String>(
+                initialValue: _recurringFrequency,
+                decoration: const InputDecoration(labelText: 'Frequency', border: OutlineInputBorder()),
+                items: [
+                  for (final o in _recurringOptions) DropdownMenuItem(value: o.$1, child: Text(o.$2)),
+                ],
+                onChanged: (v) => setState(() => _recurringFrequency = v ?? _recurringFrequency),
+              ),
+          ],
 
           const SizedBox(height: 24),
           const Text('Notes (optional)', style: TextStyle(fontWeight: FontWeight.w700)),
