@@ -102,6 +102,26 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
     }
   }
 
+  Future<void> _confirmCompletion() async {
+    final booking = _booking;
+    if (booking?.completionOtp == null) return;
+    setState(() {
+      _isBusy = true;
+      _error = null;
+    });
+    try {
+      await _repo.confirmCompletion(bookingId: widget.bookingId, otp: booking!.completionOtp!);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Work confirmed as complete.')));
+      await _load();
+    } on ServicesException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => _isBusy = false);
+    }
+  }
+
   Future<void> _respondToQuotation(bool approve) async {
     if (_quotation == null) return;
     setState(() => _isBusy = true);
@@ -250,7 +270,21 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
             ],
             if (showCompletionOtp) ...[
               const SizedBox(height: 20),
-              _OtpCard(label: 'Completion OTP', otp: booking.completionOtp!, hint: 'Read this once you\'re satisfied with the work.'),
+              _OtpCard(
+                label: 'Completion OTP',
+                otp: booking.completionOtp!,
+                hint: 'Your technician has marked the job done. Confirm below once you\'re satisfied with the work.',
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isBusy ? null : _confirmCompletion,
+                  child: _isBusy
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Confirm work is complete'),
+                ),
+              ),
             ],
 
             const SizedBox(height: 20),

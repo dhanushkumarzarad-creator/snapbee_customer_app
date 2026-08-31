@@ -160,6 +160,25 @@ class ServicesBookingRepository {
     }
   }
 
+  /// Confirms the work is done — moves the booking from `completion_pending`
+  /// to `completed` (server-side `confirm_service_completion` also raises
+  /// the invoice, sets the remaining balance, and opens any warranty). The
+  /// customer's own app already holds `completion_otp` (RLS lets them read
+  /// their booking row), so it's submitted straight through as the
+  /// confirmation gesture.
+  Future<void> confirmCompletion({required String bookingId, required String otp}) async {
+    if (_client.auth.currentSession == null) {
+      throw const ServicesException('Your session has expired. Please sign in again.');
+    }
+    try {
+      await _client.rpc('confirm_service_completion', params: {'p_booking_id': bookingId, 'p_otp': otp});
+    } on PostgrestException catch (error) {
+      throw ServicesException(_mapRpcError(error.message));
+    } catch (_) {
+      throw const ServicesException('Could not confirm completion. Please try again.');
+    }
+  }
+
   Future<void> respondToExtraWork({required String requestId, required bool approve}) async {
     try {
       await _client.rpc('respond_to_service_extra_work', params: {'p_request_id': requestId, 'p_approve': approve});
@@ -301,6 +320,9 @@ class ServicesBookingRepository {
     }
     if (message.contains('has not been completed yet')) {
       return 'You can rate this booking once the work is completed.';
+    }
+    if (message.contains('not awaiting completion confirmation') || message.contains('incorrect OTP')) {
+      return 'This booking is not ready for completion confirmation yet.';
     }
     if (message.contains('already been reviewed')) {
       return 'You have already reviewed this booking.';
