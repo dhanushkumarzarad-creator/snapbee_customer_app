@@ -22,6 +22,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/service_booking.dart';
 import '../models/service_chat_message.dart';
 import '../models/service_invoice.dart';
+import '../models/service_notification.dart';
 import '../models/service_quotation.dart';
 import '../models/service_warranty.dart';
 
@@ -269,6 +270,42 @@ class ServicesBookingRepository {
       return row == null ? null : ServiceInvoice.fromJson(Map<String, dynamic>.from(row));
     } catch (_) {
       return null;
+    }
+  }
+
+  /// This customer's `service_notifications` rows, newest first (RLS scopes
+  /// to `recipient_type='customer'` automatically). Empty until
+  /// `supabase/service_notifications.sql` is applied.
+  Future<List<ServiceNotification>> fetchNotifications({int limit = 50}) async {
+    try {
+      final rows = await _client
+          .from('service_notifications')
+          .select('*')
+          .order('created_at', ascending: false)
+          .limit(limit);
+      return (rows as List)
+          .map((r) => ServiceNotification.fromJson(Map<String, dynamic>.from(r as Map)))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<int> unreadNotificationCount() async {
+    try {
+      final rows = await _client.from('service_notifications').select('id').eq('is_read', false);
+      return (rows as List).length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  Future<void> markNotificationsRead(List<String> ids) async {
+    if (ids.isEmpty) return;
+    try {
+      await _client.from('service_notifications').update({'is_read': true}).inFilter('id', ids);
+    } catch (_) {
+      // best-effort — a missing table just means nothing to mark
     }
   }
 

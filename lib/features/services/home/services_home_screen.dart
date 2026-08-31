@@ -3,8 +3,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../screens/home/widgets/service_tabs_widget.dart';
 import '../categories/service_list_screen.dart';
+import '../data/services_booking_repository.dart';
 import '../data/services_catalog_repository.dart';
 import '../models/service.dart';
+import '../notifications/service_notifications_screen.dart';
 import '../models/service_category.dart';
 import '../models/service_offer.dart';
 import '../models/service_vendor_summary.dart';
@@ -35,18 +37,29 @@ class ServicesHomeScreen extends StatefulWidget {
 
 class _ServicesHomeScreenState extends State<ServicesHomeScreen> {
   final _repo = ServicesCatalogRepository(Supabase.instance.client);
+  final _bookingRepo = ServicesBookingRepository(Supabase.instance.client);
 
   bool _isLoading = true;
   List<ServiceCategoryRow> _categories = const [];
   List<ServiceRow> _popularServices = const [];
   List<ServiceOfferRow> _offers = const [];
   List<ServiceVendorSummary> _trustedProviders = const [];
+  int _unreadNotifications = 0;
+  RealtimeChannel? _notifChannel;
   String _query = '';
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadUnread();
+    _subscribeNotifications();
+  }
+
+  @override
+  void dispose() {
+    if (_notifChannel != null) Supabase.instance.client.removeChannel(_notifChannel!);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -64,6 +77,33 @@ class _ServicesHomeScreenState extends State<ServicesHomeScreen> {
       _trustedProviders = results[3] as List<ServiceVendorSummary>;
       _isLoading = false;
     });
+  }
+
+  Future<void> _loadUnread() async {
+    final count = await _bookingRepo.unreadNotificationCount();
+    if (mounted) setState(() => _unreadNotifications = count);
+  }
+
+  void _subscribeNotifications() {
+    _notifChannel = Supabase.instance.client
+        .channel('service_notifications:home')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'service_notifications',
+          callback: (_) {
+            if (mounted) _loadUnread();
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> _openNotifications() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ServiceNotificationsScreen()),
+    );
+    _loadUnread();
   }
 
   void _openCategoryServices(ServiceCategoryRow category) {
@@ -86,7 +126,11 @@ class _ServicesHomeScreenState extends State<ServicesHomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ServicesHeader(onLocationTap: () {}, onNotificationTap: () {}),
+                ServicesHeader(
+                  notificationCount: _unreadNotifications,
+                  onLocationTap: () {},
+                  onNotificationTap: _openNotifications,
+                ),
                 ServicesSearchBar(onChanged: (v) => setState(() => _query = v)),
 
                 // Sector selector — same shared widget Daily Essentials uses,
