@@ -28,17 +28,41 @@ class _ServiceChatScreenState extends State<ServiceChatScreen> {
   String? _myCustomerId;
   bool _loading = true;
   bool _sending = false;
+  RealtimeChannel? _channel;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _subscribeRealtime();
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    if (_channel != null) Supabase.instance.client.removeChannel(_channel!);
     super.dispose();
+  }
+
+  /// Live updates when `supabase/service_chat_realtime.sql` is applied;
+  /// otherwise this never fires and pull-to-refresh remains the fallback.
+  void _subscribeRealtime() {
+    _channel = Supabase.instance.client
+        .channel('service_chat:${widget.bookingId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'service_chat',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'booking_id',
+            value: widget.bookingId,
+          ),
+          callback: (_) {
+            if (mounted) _load();
+          },
+        )
+        .subscribe();
   }
 
   Future<void> _load() async {

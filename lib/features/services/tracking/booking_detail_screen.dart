@@ -126,6 +126,39 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
     }
   }
 
+  Future<void> _reschedule() async {
+    final booking = _booking;
+    if (booking == null) return;
+    final result = await showModalBottomSheet<({DateTime date, String slot})>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _RescheduleSheet(
+        initialDate: booking.preferredDate,
+        initialSlot: booking.preferredTimeSlot,
+      ),
+    );
+    if (result == null) return;
+    setState(() {
+      _isBusy = true;
+      _error = null;
+    });
+    try {
+      await _repo.rescheduleBooking(
+        bookingId: widget.bookingId,
+        newDate: result.date,
+        newTimeSlot: result.slot,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booking rescheduled.')));
+      await _load();
+    } on ServicesException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => _isBusy = false);
+    }
+  }
+
   Future<void> _respondToQuotation(bool approve) async {
     if (_quotation == null) return;
     setState(() => _isBusy = true);
@@ -366,7 +399,18 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
             ],
 
             const SizedBox(height: 24),
-            if (booking.status.isCancellable)
+            if (booking.status == ServiceBookingStatus.pending ||
+                booking.status == ServiceBookingStatus.vendorAccepted)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _isBusy ? null : _reschedule,
+                  icon: const Icon(Icons.event_repeat_outlined, size: 18),
+                  label: const Text('Reschedule'),
+                ),
+              ),
+            if (booking.status.isCancellable) ...[
+              const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
@@ -376,6 +420,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                       : const Text('Cancel Booking'),
                 ),
               ),
+            ],
 
             if (booking.status == ServiceBookingStatus.completed)
               if (_existingReview != null)
@@ -478,6 +523,96 @@ class _Timeline extends StatelessWidget {
             visualDensity: VisualDensity.compact,
           ),
       ],
+    );
+  }
+}
+
+/// Date + time-slot picker for rescheduling a not-yet-assigned booking.
+/// Pops `(date, slot)` or null.
+class _RescheduleSheet extends StatefulWidget {
+  final DateTime initialDate;
+  final String initialSlot;
+
+  const _RescheduleSheet({required this.initialDate, required this.initialSlot});
+
+  @override
+  State<_RescheduleSheet> createState() => _RescheduleSheetState();
+}
+
+class _RescheduleSheetState extends State<_RescheduleSheet> {
+  static const _slots = ['morning', 'afternoon', 'evening', 'asap'];
+  late DateTime _date = widget.initialDate.isBefore(DateTime.now())
+      ? DateTime.now().add(const Duration(days: 1))
+      : widget.initialDate;
+  late String _slot = _slots.contains(widget.initialSlot) ? widget.initialSlot : 'morning';
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 60)),
+    );
+    if (picked != null) setState(() => _date = picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Reschedule booking', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _pickDate,
+              icon: const Icon(Icons.calendar_today_outlined, size: 18),
+              label: Text('${_date.day}/${_date.month}/${_date.year}'),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: _slot,
+              decoration: const InputDecoration(labelText: 'Time slot', border: OutlineInputBorder()),
+              items: [
+                for (final s in _slots) DropdownMenuItem(value: s, child: Text(s[0].toUpperCase() + s.substring(1))),
+              ],
+              onChanged: (v) => setState(() => _slot = v ?? _slot),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'You can reschedule until a technician is assigned. After that, use the chat or cancel and rebook.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context, (date: _date, slot: _slot)),
+                    child: const Text('Confirm'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

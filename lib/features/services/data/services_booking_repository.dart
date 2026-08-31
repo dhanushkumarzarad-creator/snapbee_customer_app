@@ -117,6 +117,32 @@ class ServicesBookingRepository {
     }
   }
 
+  /// Moves the booking to a new date/slot. Only allowed before a technician
+  /// is assigned (server-enforced). `newTimeSlot` is one of
+  /// `morning`/`afternoon`/`evening`/`asap`. Needs
+  /// `supabase/reschedule_service_booking.sql` applied — until then the RPC
+  /// is missing and this surfaces the generic failure message.
+  Future<void> rescheduleBooking({
+    required String bookingId,
+    required DateTime newDate,
+    required String newTimeSlot,
+  }) async {
+    if (_client.auth.currentSession == null) {
+      throw const ServicesException('Your session has expired. Please sign in again.');
+    }
+    try {
+      await _client.rpc('reschedule_service_booking', params: {
+        'p_booking_id': bookingId,
+        'p_new_date': _dateOnly(newDate),
+        'p_new_time_slot': newTimeSlot,
+      });
+    } on PostgrestException catch (error) {
+      throw ServicesException(_mapRpcError(error.message));
+    } catch (_) {
+      throw const ServicesException('Could not reschedule this booking. Please try again.');
+    }
+  }
+
   /// The quotation currently awaiting the customer's response for this
   /// booking, or null if none — only `sent_to_customer` (i.e.
   /// Admin-approved) quotations are ever fetched here.
@@ -381,6 +407,12 @@ class ServicesBookingRepository {
     }
     if (message.contains('no longer be cancelled')) {
       return 'This booking can no longer be cancelled.';
+    }
+    if (message.contains('no longer be rescheduled')) {
+      return 'This booking can no longer be rescheduled — use the chat, or cancel and rebook.';
+    }
+    if (message.contains('new date cannot be in the past')) {
+      return 'Please choose a valid upcoming date.';
     }
     if (message.contains('not authorized')) {
       return 'You are not authorized to do this.';
