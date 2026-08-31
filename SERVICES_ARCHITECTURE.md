@@ -75,13 +75,40 @@ lib/
   main.dart
 ```
 
-`snapbee_services_admin`'s `features/` are the sector's admin surfaces —
-today: `dashboard`, `categories`, `catalog`, `vendors`, `technicians`,
-`inspectors`, `bookings`. **Not yet built** (each gets its own
-`features/<name>/` folder when it is, following the exact same
-domain/data/presentation shape — not stubbed in advance): `pricing`,
-`quotations`, `warranties`, `policies`, `trust`, `ai`, `complaints`,
-`disputes`, `settlements`, `reports`.
+`snapbee_services_admin`'s `features/` are the sector's admin surfaces, all
+built: `dashboard`, `categories`, `catalog`, `vendors`, `technicians`,
+`inspectors`, `bookings`, `dispatch`, `pricing`, `quotations`,
+`extra_work`, `work_orders`, `inspections`, `warranties`, `policies`,
+`parts_catalog`, `trust`, `ai_control_center`, `complaints`, `disputes`,
+`payments`, `settlements`, `invoices`, `notifications`, `reports`,
+`settings`.
+
+The three provider apps are layered the same way (`domain/data/
+presentation` per feature) but flatter — auth + self-registration plus a
+small acting surface each; every state transition is a shared RPC, never a
+local write:
+
+- **`snapbee_services_vendor`** — `dashboard`, `bookings`, `pricing`,
+  `settlements`. Booking detail does accept (`vendor_accept_service_booking`)
+  → assign a technician (`assign_service_technician`, picked from
+  `verification_state='approved'` ∩ `service_technician_categories` for the
+  booking's category — there is no `vendor_id` on `service_technicians`, so
+  "roster" is category-scoped) → no-show (`record_service_no_show`), and a
+  post-inspection quotation card (`create_service_quotation`). Pricing
+  submits per-service prices for Admin approval (`submit_service_pricing`);
+  Earnings reads `service_settlements` (`payee_type='vendor'`).
+- **`snapbee_services_technician`** — `dashboard`, `jobs` (Offers / Active /
+  Done). A per-booking job hub runs the visit: `respond_to_service_offer`
+  → `mark_service_en_route` → `confirm_service_arrival` (customer's OTP) →
+  `start_service_job` → `request_service_completion`, plus a work log
+  (`add_service_work_update`), parts (`add_service_booking_part`),
+  extra-work requests (`request_service_extra_work`), on-site payment
+  collection (`record_service_payment`) and rate-the-customer
+  (`rate_service_customer`, only once the booking is `completed`).
+- **`snapbee_services_inspector`** — `dashboard`, `inspections` (Open /
+  Done — Done renders the filed `inspection_reports` row), `profile`
+  (read-only + availability). Flow: `mark_inspection_en_route` →
+  `confirm_inspection_arrival` → `submit_inspection_report`.
 
 `snapbee_customer_app`'s Services sector lives entirely under
 `lib/features/services/` (that app's own convention is flat —
@@ -91,12 +118,15 @@ matching how `lib/screens/cart/` already shapes itself: `cart_screen.dart` +
 `data/` (2 repositories — catalog vs. the authenticated booking lifecycle),
 `models/`, `home/`, `categories/` (list + detail + inline verified-provider
 listing), `booking/` (form + extra-work response sheet), `tracking/`
-(the full lifecycle hub — timeline, OTP display, quotation/extra-work
-action cards, payment summary, warranty, review, complaint/dispute entry
-points), `service_records/` (My Bookings, tabbed upcoming/active/completed/
-cancelled), `quotation/`, `warranty/`, `complaints/`, `disputes/`,
-`reviews/`, `payments/`. The sector tab (`ServiceTabsWidget`) is wired —
-tapping "Services" navigates to `ServicesHomeScreen` for real.
+(the full lifecycle hub — timeline; arrival OTP display; completion OTP
+with a "Confirm work is complete" action → `confirm_service_completion`,
+which moves the booking `completion_pending → completed`;
+quotation/extra-work action cards; payment summary; warranty; review;
+complaint/dispute entry points), `service_records/` (My Bookings, tabbed
+upcoming/active/completed/cancelled), `quotation/`, `warranty/`,
+`complaints/`, `disputes/`, `reviews/`, `payments/`. The sector tab
+(`ServiceTabsWidget`) is wired — tapping "Services" navigates to
+`ServicesHomeScreen` for real.
 
 **Not yet built** (no fake/placeholder screens created for these — they
 simply don't exist yet): `offers/` as its own folder (offers are shown
@@ -132,33 +162,32 @@ the same customer account that places a Daily Essentials order).
 - **Migrations, repositories, models, RLS policies, and tests all stay
   inside this one file / this one app's `supabase/` directory** — no
   Services DDL exists in any other app's repo.
-- No AI logic lives in SQL beyond deterministic rule checks (the 1.5×
-  reference-price part flag, the repeated-warranty-claim flag) and the
-  logging tables (`service_ai_decisions`, `service_ai_escalations`) the
-  future AI layer will read from and write to.
+- The AI decision layer lives entirely in SQL (`services_ai_agent_
+  architecture.sql`, applied to prod) — deterministic rule evaluators, no
+  LLM. It logs to `service_ai_decisions` / `service_ai_escalations` and is
+  wired non-blocking into a few RPCs (`create_service_booking`,
+  `raise_service_warranty_claim`, `request_service_extra_work`,
+  `raise_service_complaint`).
 
-## AI layer (planned, not yet built)
+## AI layer (built — server-side)
 
-When built, every AI concern gets its own dedicated module — never
-scattered into booking/quotation/warranty screens directly:
+`supabase/services_ai_agent_architecture.sql` implements a hierarchy
+(1 Super AI → 8 domain agents → 24 workers) as plpgsql rule evaluators —
+`model_used` is always null, confidence/risk are computed from real
+counts and thresholds. `run_ai_agent()` aggregates workers, writes a
+decision, and auto-escalates above the risk threshold. `evaluate_ai_worker`
+/ `run_ai_agent` are `SECURITY DEFINER` with `authenticated` execute
+revoked — only reachable from other admin-owned RPCs.
 
-```
-services/
-  ai/
-    ai_service.dart          — the single entry point every feature calls
-    ai_decision_engine.dart  — rules-first dispatcher: deterministic check -> AI only if genuinely ambiguous -> admin escalation if high-risk
-    ai_risk_engine.dart      — trust/fraud/risk scoring
-    ai_moderation.dart       — chat/media moderation
-    ai_quotation.dart        — quotation/price validation
-    ai_matching.dart         — provider matching assistance
-    ai_warranty.dart         — warranty-abuse detection
-    ai_escalation.dart       — writes to service_ai_escalations, notifies Admin
-```
+`snapbee_services_admin`'s `features/ai_control_center/` is the admin UI
+(Overview / Agents & Workers / Decisions & Execution Log / Escalations).
 
-Every AI call logs a `service_ai_decisions` row (confidence + risk score);
-anything above the configured risk threshold writes a
-`service_ai_escalations` row instead of resolving silently. No screen calls
-an LLM directly — everything routes through `ai_service.dart`.
+A client-side Dart AI layer (`services/ai/ai_service.dart` etc.) was
+considered and deliberately not built — the deterministic engine belongs
+in the database next to the RLS and policy rules it enforces, not behind
+a Flutter client. If genuine LLM calls are ever needed, that Dart layer
+is where they route through, and every call still logs a
+`service_ai_decisions` row.
 
 ## Policy engine (schema built, application layer not yet built)
 
@@ -191,25 +220,36 @@ orders); each concept was designed fresh against the Services domain model.
 
 ## Integration points
 
-- **Customer App ↔ Services backend**: wired — real signup/booking/tracking/
-  quotation-approval/warranty-claim/complaint/dispute/review flows, all
-  through the same RPCs the provider-side apps use. Two schema gaps found
-  and fixed while wiring this (services_module_v2.sql SECTION 22, still
-  pre-application): `service_vendors`/`service_pricing` had no
-  customer-browse RLS at all (needed for "Verified Providers" on the
-  service detail screen), and complaints/disputes had a table + admin-only
-  RLS but no customer write path — added `raise_service_complaint`/
-  `raise_service_dispute` RPCs rather than a raw RLS insert policy, matching
-  every other customer write in this file. Also added the `service-media`
-  private storage bucket (per-uploader-folder RLS) for emergency-booking
-  problem photos.
-- **Vendor/Technician/Inspector apps ↔ Services Admin**: all four write to
-  the same tables Admin reads/approves (pricing, quotations, warranties) —
-  no direct app-to-app calls, everything flows through Postgres + RLS.
-- **AI layer ↔ everything**: planned to be called from RPCs and/or a Dart
-  service layer, logging into `service_ai_decisions`/
-  `service_ai_escalations`, never bypassing the deterministic rules already
-  enforced by RLS and the policy engine.
+- **Customer App ↔ Services backend**: wired — real signup / booking /
+  tracking / quotation-approval / extra-work-approval / **completion
+  confirmation** (`confirm_service_completion`) / warranty-claim /
+  complaint / dispute / review, all through the same RPCs the provider-side
+  apps use. `services_module_v2.sql` (incl. SECTION 22: customer-browse RLS
+  on `service_vendors`/`service_pricing`, the `raise_service_complaint` /
+  `raise_service_dispute` write-path RPCs, and the `service-media` private
+  bucket) is applied to prod.
+- **The end-to-end flow** Category → Booking → Assignment → Visit →
+  Completion → Payment → Rating is fully wired across the customer +
+  provider apps. The one participant per transition:
+  `create_service_booking` (customer) → `vendor_accept_service_booking` +
+  `assign_service_technician` (vendor / admin) → `respond_to_service_offer`
+  (technician) → `mark_service_en_route` / `confirm_service_arrival` /
+  `start_service_job` / `request_service_completion` (technician) →
+  `confirm_service_completion` (customer) → `record_service_payment`
+  (technician) → `submit_service_review` (customer) +
+  `rate_service_customer` (technician). The inspection branch runs in
+  parallel: `assign_service_inspector` (admin) →
+  `mark_inspection_en_route` / `confirm_inspection_arrival` /
+  `submit_inspection_report` (inspector) → `create_service_quotation`
+  (vendor / technician) → `admin_review_service_quotation` (admin) →
+  `respond_to_service_quotation` (customer).
+- **Provider apps ↔ Services Admin**: no direct app-to-app calls — every
+  app writes to the same tables Admin reads/approves (pricing, quotations,
+  warranties, settlements), everything flows through Postgres + RLS.
+- **AI layer ↔ everything**: server-side only (`services_ai_agent_
+  architecture.sql`), fired non-blocking from a handful of RPCs, logging
+  into `service_ai_decisions` / `service_ai_escalations`, never bypassing
+  the deterministic rules already enforced by RLS and the policy engine.
 
 ## Naming conventions
 
