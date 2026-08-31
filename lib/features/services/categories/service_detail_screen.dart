@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../booking/booking_form_screen.dart';
 import '../data/services_catalog_repository.dart';
 import '../models/service.dart';
+import '../models/service_review.dart';
 import '../models/service_vendor.dart';
 
 class ServiceDetailScreen extends StatefulWidget {
@@ -19,11 +20,13 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   final _repo = ServicesCatalogRepository(Supabase.instance.client);
   bool _isLoadingProviders = true;
   List<ServiceVendorListing> _providers = const [];
+  List<ServiceReview> _reviews = const [];
 
   @override
   void initState() {
     super.initState();
     _loadProviders();
+    _loadReviews();
   }
 
   Future<void> _loadProviders() async {
@@ -33,6 +36,12 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       _providers = providers;
       _isLoadingProviders = false;
     });
+  }
+
+  Future<void> _loadReviews() async {
+    final reviews = await _repo.fetchServiceReviews(widget.service.id);
+    if (!mounted) return;
+    setState(() => _reviews = reviews);
   }
 
   @override
@@ -126,6 +135,13 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                   trailing: Text('₹${provider.price.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ),
+          if (_reviews.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            const Text('Customer Reviews', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            const SizedBox(height: 8),
+            for (final review in _reviews) _ReviewTile(review: review),
+          ],
+
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -142,12 +158,14 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
 }
 
 /// A weighted average across every verified provider's own `rating_avg` —
-/// the only cross-provider rating signal this schema exposes for a service
-/// (there is no per-service rating column, and `service_reviews` is
-/// customer/technician-self-select only, so individual reviews can't be
-/// listed here). Weighted by each provider's `rating_count` so one provider
-/// with 200 reviews isn't diluted by another with 1. Returns null when no
-/// provider has any ratings yet, rather than fabricating a 0.0 average.
+/// a cross-provider rating signal for a service (there is no per-service
+/// rating column). The individual review list below it comes from
+/// `service_reviews` and only populates once `service_reviews_public_select`
+/// RLS (supabase/service_reviews_public_read.sql) is applied — until then
+/// this weighted average is the only rating shown. Weighted by each
+/// provider's `rating_count` so one provider with 200 reviews isn't diluted
+/// by another with 1. Returns null when no provider has any ratings yet,
+/// rather than fabricating a 0.0 average.
 ({double average, int totalCount})? weightedProviderRating(List<ServiceVendorListing> providers) {
   final rated = providers.where((p) => p.ratingCount > 0).toList();
   if (rated.isEmpty) return null;
@@ -222,6 +240,42 @@ class _AvailabilitySection extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ReviewTile extends StatelessWidget {
+  final ServiceReview review;
+
+  const _ReviewTile({required this.review});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                for (var i = 1; i <= 5; i++)
+                  Icon(i <= review.rating ? Icons.star : Icons.star_border, size: 15, color: Colors.amber),
+                const SizedBox(width: 8),
+                Text(
+                  '${review.reviewerName ?? 'Customer'} · ${review.createdAt.day}/${review.createdAt.month}/${review.createdAt.year}',
+                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+              ],
+            ),
+            if (review.reviewText != null) ...[
+              const SizedBox(height: 4),
+              Text(review.reviewText!, style: const TextStyle(fontSize: 13)),
+            ],
+          ],
+        ),
       ),
     );
   }

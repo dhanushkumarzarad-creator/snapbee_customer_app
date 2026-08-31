@@ -14,6 +14,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/service.dart';
 import '../models/service_category.dart';
 import '../models/service_offer.dart';
+import '../models/service_review.dart';
 import '../models/service_vendor.dart';
 import '../models/service_vendor_summary.dart';
 
@@ -119,6 +120,26 @@ class ServicesCatalogRepository {
           .eq('is_active', true)
           .order('created_at', ascending: false);
       return (rows as List).map((r) => ServiceOfferRow.fromJson(Map<String, dynamic>.from(r as Map))).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Reviews left by other customers for completed bookings of this
+  /// service. Needs `service_reviews_public_select` RLS
+  /// (supabase/service_reviews_public_read.sql) — until that's applied the
+  /// join returns nothing and this degrades to an empty list, exactly like
+  /// every other read here.
+  Future<List<ServiceReview>> fetchServiceReviews(String serviceId, {int limit = 20}) async {
+    try {
+      final rows = await _client
+          .from('service_reviews')
+          .select('rating, review_text, created_at, service_bookings!inner(service_id, status), customers(name)')
+          .eq('service_bookings.service_id', serviceId)
+          .eq('service_bookings.status', 'completed')
+          .order('created_at', ascending: false)
+          .limit(limit);
+      return (rows as List).map((r) => ServiceReview.fromJson(Map<String, dynamic>.from(r as Map))).toList();
     } catch (_) {
       return const [];
     }

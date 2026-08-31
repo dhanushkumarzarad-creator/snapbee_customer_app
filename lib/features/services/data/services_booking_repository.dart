@@ -20,6 +20,8 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/service_booking.dart';
+import '../models/service_chat_message.dart';
+import '../models/service_invoice.dart';
 import '../models/service_quotation.dart';
 import '../models/service_warranty.dart';
 
@@ -176,6 +178,71 @@ class ServicesBookingRepository {
       throw ServicesException(_mapRpcError(error.message));
     } catch (_) {
       throw const ServicesException('Could not confirm completion. Please try again.');
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // In-app chat + invoice — both read straight through existing RLS
+  // (`service_chat_participant_*`, `service_invoices_customer_self_select`),
+  // no RPC. Reads degrade to empty/null; the chat insert has no fallback.
+  // --------------------------------------------------------------------------
+
+  /// This account's `customers.id` — same lookup wishlist_repository uses.
+  Future<String?> _customerId() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return null;
+    final row = await _client.from('customers').select('id').eq('auth_user_id', user.id).maybeSingle();
+    return row?['id'] as String?;
+  }
+
+  Future<List<ServiceChatMessage>> fetchChatThread(String bookingId) async {
+    try {
+      final rows = await _client
+          .from('service_chat')
+          .select('*')
+          .eq('booking_id', bookingId)
+          .order('created_at');
+      return (rows as List)
+          .map((r) => ServiceChatMessage.fromJson(Map<String, dynamic>.from(r as Map)))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> sendChatMessage({
+    required String bookingId,
+    String? message,
+    String? mediaUrl,
+  }) async {
+    if (_client.auth.currentSession == null) {
+      throw const ServicesException('Your session has expired. Please sign in again.');
+    }
+    final customerId = await _customerId();
+    if (customerId == null) {
+      throw const ServicesException('Your account is not fully set up yet. Please contact support.');
+    }
+    try {
+      await _client.from('service_chat').insert({
+        'booking_id': bookingId,
+        'sender_type': 'customer',
+        'sender_id': customerId,
+        'message': message,
+        'media_url': mediaUrl,
+      });
+    } on PostgrestException catch (error) {
+      throw ServicesException(_mapRpcError(error.message));
+    } catch (_) {
+      throw const ServicesException('Could not send your message. Please try again.');
+    }
+  }
+
+  Future<ServiceInvoice?> fetchInvoice(String bookingId) async {
+    try {
+      final row = await _client.from('service_invoices').select('*').eq('booking_id', bookingId).maybeSingle();
+      return row == null ? null : ServiceInvoice.fromJson(Map<String, dynamic>.from(row));
+    } catch (_) {
+      return null;
     }
   }
 

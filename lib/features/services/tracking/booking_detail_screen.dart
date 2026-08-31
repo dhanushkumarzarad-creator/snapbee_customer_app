@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../chat/service_chat_screen.dart';
 import '../complaints/complaint_form_sheet.dart';
 import '../data/services_booking_repository.dart';
 import '../disputes/dispute_form_sheet.dart';
 import '../booking/extra_work_response_sheet.dart';
 import '../models/service_booking.dart';
+import '../models/service_invoice.dart';
 import '../models/service_quotation.dart';
 import '../models/service_warranty.dart';
 import '../payments/payment_summary_widget.dart';
@@ -38,6 +40,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
   ServiceWarranty? _warranty;
   List<WarrantyClaim> _warrantyClaims = const [];
   Map<String, dynamic>? _existingReview;
+  ServiceInvoice? _invoice;
   bool _isLoading = true;
   bool _isBusy = false;
   String? _error;
@@ -61,13 +64,13 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
       return;
     }
 
+    final completed = booking.status == ServiceBookingStatus.completed;
     final results = await Future.wait([
       _repo.fetchPendingQuotation(widget.bookingId),
       _repo.fetchExtraWorkRequests(widget.bookingId),
       _repo.fetchWarranty(widget.bookingId),
-      booking.status == ServiceBookingStatus.completed
-          ? _repo.fetchExistingReview(widget.bookingId)
-          : Future.value(null),
+      completed ? _repo.fetchExistingReview(widget.bookingId) : Future.value(null),
+      completed ? _repo.fetchInvoice(widget.bookingId) : Future.value(null),
     ]);
     final warranty = results[2] as ServiceWarranty?;
     final claims = warranty == null ? <WarrantyClaim>[] : await _repo.fetchWarrantyClaims(warranty.id);
@@ -80,6 +83,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
       _warranty = warranty;
       _warrantyClaims = claims;
       _existingReview = results[3] as Map<String, dynamic>?;
+      _invoice = results[4] as ServiceInvoice?;
       _isLoading = false;
     });
   }
@@ -220,7 +224,22 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
     final pendingExtraWork = _extraWork.where((r) => r.isPendingCustomerApproval).toList();
 
     return Scaffold(
-      appBar: AppBar(title: Text(booking.id)),
+      appBar: AppBar(
+        title: Text(booking.id),
+        actions: [
+          if (booking.status != ServiceBookingStatus.cancelled)
+            IconButton(
+              icon: const Icon(Icons.chat_bubble_outline),
+              tooltip: 'Chat with your provider',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ServiceChatScreen(bookingId: booking.id, title: booking.serviceName),
+                ),
+              ),
+            ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
@@ -311,6 +330,11 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
 
             const SizedBox(height: 20),
             PaymentSummaryWidget(booking: booking),
+
+            if (_invoice != null) ...[
+              const SizedBox(height: 16),
+              _InvoiceCard(invoice: _invoice!),
+            ],
 
             if (_warranty != null && _warranty!.isActive) ...[
               const SizedBox(height: 16),
@@ -454,6 +478,56 @@ class _Timeline extends StatelessWidget {
             visualDensity: VisualDensity.compact,
           ),
       ],
+    );
+  }
+}
+
+/// The itemised `service_invoices` row raised on completion. Shows only the
+/// customer-facing lines (subtotal / parts / extra work / discount / tax /
+/// total) — platform fee and commission are internal and not part of what
+/// the customer pays.
+class _InvoiceCard extends StatelessWidget {
+  final ServiceInvoice invoice;
+
+  const _InvoiceCard({required this.invoice});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget row(String label, double amount, {bool bold = false}) {
+      final style = bold ? const TextStyle(fontWeight: FontWeight.w700) : null;
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [Text(label, style: style), Text('₹${amount.toStringAsFixed(0)}', style: style)],
+        ),
+      );
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Invoice', style: TextStyle(fontWeight: FontWeight.w700)),
+                Text(invoice.invoiceNumber, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            row('Service', invoice.subtotal),
+            if (invoice.partsTotal > 0) row('Parts', invoice.partsTotal),
+            if (invoice.extraWorkTotal > 0) row('Extra work', invoice.extraWorkTotal),
+            if (invoice.discountAmount > 0) row('Discount', -invoice.discountAmount),
+            row('Tax', invoice.taxAmount),
+            const Divider(height: 16),
+            row('Total', invoice.totalAmount, bold: true),
+          ],
+        ),
+      ),
     );
   }
 }
