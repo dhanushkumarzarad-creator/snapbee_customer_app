@@ -1,6 +1,7 @@
-# SnapBee — Production Deploy Checklist
+# SnapBee — Production Launch Checklist
 
-Covers the four buildable Flutter-web apps:
+Covers the four buildable Flutter-web apps. All point at the **same** Supabase project:
+`zhdhkvoxkdmsuiyehgsw` (`https://zhdhkvoxkdmsuiyehgsw.supabase.co`).
 
 | App | Actor | `.env` required | Behaviour if `.env` missing |
 |---|---|---|---|
@@ -9,36 +10,212 @@ Covers the four buildable Flutter-web apps:
 | `snapbee_delivery` | Delivery partners | **Yes** (bundled asset) | **Hard crash on startup** (blank page) — `dotenv.env['SUPABASE_URL']!` |
 | `snapbee_admin` | Platform admins | **Yes** (bundled asset) | Boots with empty credentials → all Supabase calls fail |
 
-All apps point at the **same** Supabase project: `zhdhkvoxkdmsuiyehgsw` (`https://zhdhkvoxkdmsuiyehgsw.supabase.co`).
+Last full audit: **2026-08-31** (see `[[project_snapbee_prod_readiness_audit_2026_08_31]]` in the
+Claude memory store). Sections below reflect live inspection of the production project on that date.
 
 ---
 
-## 1. `.env` setup
+## 1. MUST DO BEFORE LAUNCH
 
-`vendor`, `delivery`, and `admin` each load `.env` via `flutter_dotenv` and declare it as an asset in `pubspec.yaml`, so **`flutter build web` bakes `.env` into the deployed bundle**. It is `.gitignore`d, so a fresh `git clone` has no `.env` — CI/deploy must create it before building.
+### 1.1 — Provision `.env` in the deploy build for vendor / delivery / admin
+`.env` is gitignored and bundled as a Flutter asset. A fresh clone has none — `delivery` hard-crashes
+without it, `vendor` falls back to mock repos, `admin` boots with empty credentials.
 
-### Steps (per app: `snapbee_vendor`, `snapbee_delivery`, `snapbee_admin`)
+**Steps** — in the CI/deploy job, *before* `flutter build web`, create the file at each app root
+(sibling of `pubspec.yaml`): `snapbee_vendor/.env`, `snapbee_delivery/.env`, `snapbee_admin/.env`,
+each containing exactly:
 
-1. `cp .env.example .env` (vendor has no example — create `.env` with the three keys below).
-2. Fill in:
+```dotenv
+SUPABASE_URL=https://zhdhkvoxkdmsuiyehgsw.supabase.co
+SUPABASE_ANON_KEY=sb_publishable_6CT-UQ0hog6b4Y9oOEljSw_LMH3V3D5
+APP_ENV=production
+```
 
-   ```dotenv
-   SUPABASE_URL=https://zhdhkvoxkdmsuiyehgsw.supabase.co
-   SUPABASE_ANON_KEY=<publishable / anon key for the prod project>
-   APP_ENV=production
-   ```
+Then build. **Verify:** `build/web/assets/.env` in the output shows `APP_ENV=production`.
+`snapbee_customer_app` needs nothing (values already inlined in `lib/main.dart`, correct).
+**Never** put a `service_role`/secret key in `.env` — it ships to every browser.
 
-3. **`APP_ENV=production`** — every checked-in example currently says `development`.
-4. Confirm `.env` exists on disk immediately before `flutter build web`.
+- [ ] `snapbee_vendor/.env` written in deploy build
+- [ ] `snapbee_delivery/.env` written in deploy build
+- [ ] `snapbee_admin/.env` written in deploy build
 
-### Hard rules
+### 1.2 — Configure Supabase Auth URL settings for the deployed domains
+Not verified in the audit. Auth email links / session redirects break if the deployed origins aren't
+registered.
 
-- **Never** put `SUPABASE_SERVICE_ROLE_KEY` (or any secret) in `.env` — it is a client asset and ships to every browser. Only the publishable/anon key belongs there; RLS is the security boundary.
-- `snapbee_customer_app` has its URL + publishable key hardcoded in `lib/main.dart` — update there if the project ever changes; it does not read `.env`.
+**Steps** — Dashboard → project `zhdhkvoxkdmsuiyehgsw`:
+1. **Authentication → URL Configuration → Site URL** = deployed customer-app URL.
+2. **Redirect URLs** — add the deployed URL of all four apps, each with `/**`.
+3. **Authentication → Providers → Email** — confirm "Confirm email" matches the intended flow.
+
+- [ ] Site URL set
+- [ ] Redirect URLs added for all 4 apps
+- [ ] Email-confirmation setting confirmed
+
+### 1.3 — Replace the default auth email sender (custom SMTP)
+Not verified. Supabase's built-in SMTP is rate-limited to a few messages/hour and will block real
+signup/reset traffic.
+
+**Steps** — Dashboard → **Authentication → Emails / SMTP Settings** → enter a real provider
+(SendGrid / SES / Postmark): host, port, username, password, sender address. Send a test.
+
+- [ ] Custom SMTP configured and test email received
+
+### 1.4 — Load real vendor + branch data
+Prod has **1** usable vendor (`Local Store`, has a primary branch). `SnapBee Demo Vendor A`/`B`,
+`sss`, `vfvf` have **zero** branches. `place_customer_order` resolves exactly one branch — a vendor
+with no `is_primary` branch (with coordinates) cannot receive any order.
+
+**Steps** — Admin panel, for every launch vendor:
+1. **Vendors** → confirm the vendor exists, status = Active (approve if pending).
+2. Open vendor → **Branches** → **Add Branch**: name, address, city, district, pincode,
+   **latitude**, **longitude** (non-null), opening/closing time, status = **Active**.
+3. Mark exactly **one** branch **Set as primary**.
+4. Verify each launch vendor ends with `branches ≥ 1`, `primary = 1`.
+
+- [ ] Every launch vendor has an active primary branch with coordinates
+
+### 1.5 — Remove test / junk data from production
+Prod holds only demo/test rows: 5 vendors incl. `sss` / `vfvf`, 2 demo delivery partners
+(`salaried.demo`, `freelance.demo`), 2 demo orders, 1 test customer.
+
+**Steps** — Admin panel (do this **after** 1.4):
+1. **Vendors** → delete `sss`, delete `vfvf`.
+2. Decide on `SnapBee Demo Vendor A`/`B` and the two `*.demo@snapbee.app` delivery partners —
+   keep intentionally for staff testing, or delete them and their demo orders.
+3. **Orders** → delete `Demo Customer — Pool Order` and `Demo Customer — Salaried Assigned` if the
+   demo vendors/partners were removed.
+
+- [ ] Junk vendors `sss` / `vfvf` deleted
+- [ ] Demo vendors / partners / orders resolved (kept-for-testing or deleted)
+
+### 1.6 — Live RLS verification with real signed-in accounts
+Read-only inspection confirmed RLS is enabled everywhere with real (non-`true`) conditions, but
+**cannot** confirm each policy is semantically correct (cross-tenant isolation).
+
+**Steps** — on the deployed apps, two real accounts per role:
+1. **Customers:** Customer A places an order. Sign in as Customer B → B must see none of A's orders.
+   Confirm in DevTools → Network (or `curl` with B's token) that the `orders` request returns only
+   B's rows.
+2. **Vendors:** A and B each with a branch + product. A sees only its own branch's orders; editing
+   B's product via the app must fail.
+3. **Delivery partner:** sees only their assigned + eligible pool tasks.
+4. **Admin:** sign in with a **view-only** role → write actions must be rejected.
+
+Record pass/fail per check. Any failure is a launch blocker.
+
+- [ ] Customer ↔ customer isolation verified
+- [ ] Vendor ↔ vendor isolation verified
+- [ ] Delivery-partner task scoping verified
+- [ ] Admin limited-role write-block verified
+
+### 1.7 — Sign off on the intentional launch-scope limits
+Deliberate, but need a recorded product decision:
+- Checkout is **COD only** (prepaid disabled).
+- No Google login, no forgot-password (customer app).
+- Customer Profile items are non-functional stubs: wallet top-up, Coupons, Rewards, Referrals,
+  in-app Support, saved-address management, Settings, Help, About.
+- Admin global search bar is disabled.
+- Admin in-app notification bell stays disabled unless `admin_notifications` is live
+  (verify: SQL editor → `select to_regclass('public.admin_notifications');` → non-null = fine).
+
+- [ ] Product/stakeholder sign-off on the above
+
+### 1.8 — Backups / PITR
+Not verified. **Steps** — Dashboard → **Settings → Database → Backups**: confirm daily backups on;
+enable PITR if the plan supports it.
+
+- [ ] Backups confirmed / PITR enabled
+
+### 1.9 — Final build gate (run against the exact deploy commit)
+Per app: `flutter pub get && flutter analyze && flutter test && flutter build web` — all clean.
+Green as of 2026-08-31 (645 tests: 65 / 73 / 173 / 334).
+
+- [ ] All four apps: analyze 0, tests pass, web build succeeds
 
 ---
 
-## 2. Build
+## 2. SAFE TO DO AFTER LAUNCH
+
+- **Delivery auto-dispatch** — `vehicles` and `delivery_partner_locations` are empty, so
+  `run_dispatch_tick` matches nobody. Resolves organically as real partners onboard (register →
+  vehicle assigned → go Online → GPS pings). **Manual assignment works today**
+  (`assign_delivery_manually`, from vendor/admin) and covers the gap. No pre-seeding needed.
+- **`MAINTAIN` privilege** still held by `anon`/`authenticated` on `postgres`-owned tables
+  (VACUUM/ANALYZE/LOCK — low risk): `revoke maintain on all tables in schema public from anon, authenticated;`
+- **`supabase_admin` default-privileges residual** — a future *dashboard/extension-created* table
+  would re-grant TRUNCATE/REFERENCES/TRIGGER to client roles. Re-run
+  `revoke truncate, references, trigger on all tables in schema public from anon, authenticated;`
+  after adding any such table.
+- **Crash/error reporting** — wire Sentry/Crashlytics into all four apps.
+- **`go_router` `errorBuilder`** for `delivery` + `admin` (branded 404).
+- **Dead code** — remove the unused `PlaceholderScreen` class in `vendor` and `delivery`.
+- **SECURITY DEFINER RPC exposure review** (defense in depth).
+- **Dependency updates** — 32–42 packages per app have newer versions behind constraints.
+- **Feature backlog** — prepaid payments, social login, forgot-password, customer
+  wallet/coupons/rewards/referrals/support, admin global search, admin notifications, richer catalog.
+
+---
+
+## 3. ALREADY VERIFIED (2026-08-31 audit — no action needed)
+
+**Build & code**
+- `flutter analyze`: 0 issues, all four apps.
+- `flutter test`: 645 pass (customer 65, vendor 73, delivery 173, admin 334), 0 fail / 0 skip.
+- `flutter build web`: succeeds for all four (Wasm dry-run clean).
+- Auth gates + routing sound; every route resolves to a real screen; no redirect lockout/loop.
+- No secrets in any `lib/`; no raw `print()`; no `http://` / `localhost`.
+- All Supabase RPC wiring is real (`place_customer_order`, `create_service_booking`,
+  `assign_delivery_manually`, `complete_delivery`, COD / inventory / location RPCs).
+- Removed the leftover `[DIAG]` block from `snapbee_admin/lib/main.dart` (`0150cca`).
+- All four apps on GitHub (private, `dhanushkumarzarad-creator`), `master` in sync.
+
+**Config**
+- All three dotenv apps' `.env` (and `customer_app`'s hardcoded values) already point at production
+  `zhdhkvoxkdmsuiyehgsw` with the publishable key. Only `APP_ENV` label differs — it is read nowhere
+  that affects behaviour (`snapbee_admin`'s `EnvConfig.isProduction` is defined but unused; `vendor`
+  and `delivery` never read `APP_ENV`).
+
+**Database — seeding**
+- `app_settings`, `notification_settings`, `security_settings`, `system_info` — 1 row each
+  (self-seeded by `schema.sql`). `admin_profile_settings` is a **view**, not a table.
+- `delivery_config` (1), `vehicle_capacity_rules` (2), `delivery_pricing_rules` (3) — seeded; the
+  delivery quote engine is functional.
+- All 15 AI-hardening / event-routing migrations applied + verified on prod (2026-08-28).
+
+**Database — RLS & grants (live inspection)**
+- RLS enabled on every core/sensitive table with real policies (orders 10, customers 7, vendors 7,
+  products 8, vehicles 5, delivery_partners 7, delivery_assignments 7, vendor_branches 6,
+  commission_rates 5, cod_collections 6, vendor_bank_details 5, payouts 4, admin_profiles 3,
+  settings tables 2 each).
+- No unconditional `USING (true)` DELETE/UPDATE/SELECT policy on any of 14 sensitive tables.
+- No `PUBLIC` table grants. `anon` SELECT limited to 6 catalog tables; no anon read on
+  orders/customers/vendors/finance.
+- `settings_authenticated_grants.sql` applied — `authenticated` has UPDATE on `app_settings` +
+  `admin_profiles`; `notification_settings` / `security_settings` correctly SELECT-only.
+- **`TRUNCATE` / `REFERENCES` / `TRIGGER` revoked from `anon` + `authenticated` on all public
+  tables** (`supabase/revoke_truncate_from_client_roles.sql`, commit `d6c48ba`, applied + verified):
+  0 such grants remain; all SELECT/INSERT/UPDATE/DELETE grants unchanged; `service_role` untouched;
+  future `postgres`-owned tables no longer auto-grant them.
+
+---
+
+## Appendix A — `.env` file reference
+
+`vendor`, `delivery`, `admin` load `.env` via `flutter_dotenv` and declare it as a `pubspec.yaml`
+asset, so `flutter build web` bakes it into the bundle. `.env.example` exists for `delivery` and
+`admin` only (not `vendor`).
+
+| Key | Value |
+|---|---|
+| `SUPABASE_URL` | `https://zhdhkvoxkdmsuiyehgsw.supabase.co` |
+| `SUPABASE_ANON_KEY` | `sb_publishable_6CT-UQ0hog6b4Y9oOEljSw_LMH3V3D5` (publishable — safe to ship) |
+| `APP_ENV` | `production` for deploys; keep committed `.env.example` at `development` |
+
+Staging project (do **not** use for production): `ycvtiizukzaindrpcpie`, key
+`sb_publishable_ZjL2SDjtn-aw_CullEf_hw_-TKC3N-G` — see `snapbee_admin/.env.staging`.
+
+## Appendix B — Build commands
 
 Per app:
 
@@ -48,53 +225,3 @@ flutter analyze          # must report: No issues found!
 flutter test             # must report: All tests passed
 flutter build web        # output: build/web/
 ```
-
-Last verified green (all four): analyze 0 issues; tests 65 / 73 / 173 / 334 pass; web builds succeed.
-
----
-
-## 3. Database seeding (Supabase, prod project)
-
-The apps build and run without this data, but core flows are dead until it exists.
-
-- [ ] **`vehicles`** — must have ≥1 row. Delivery dispatch matching is an inner join on `vehicles`; with 0 rows **no delivery is ever assigned**.
-- [ ] **`vendor_branches`** — ≥1 row per active vendor, exactly one with `is_primary = true`. Customer checkout (`place_customer_order`) resolves a single branch; vendors with no branch cannot receive orders.
-- [ ] **Admin settings tables** — seed one row in each; an *empty* table makes the Admin app silently show mock settings:
-  - [ ] `app_settings`
-  - [ ] `admin_profile_settings`
-  - [ ] `notification_settings`
-  - [ ] `security_settings`
-  - [ ] `system_info`
-- [ ] **`admin_notifications`** — confirm the table/RPC is live, or the Admin notification bell stays disabled ("coming soon").
-- [ ] At least one real record per actor to smoke-test: a customer account, an approved vendor + product, a delivery partner (freelance and salaried), an admin account with a role granting the permissions under test.
-
----
-
-## 4. Backend verification (cannot be checked from client code)
-
-- [ ] All migrations in `supabase/*.sql` (each app) applied to the **prod** project — verify against prod, not staging.
-- [ ] RLS smoke test per role: sign in as each actor and confirm they can do exactly what they should and nothing more (customer can't read other customers' orders, vendor only sees own branch, etc.).
-- [ ] RPCs callable by the intended role only: `place_customer_order`, `cancel_customer_order`, `create_service_booking`, `assign_delivery_manually`, `complete_delivery`, `record_cod_collection`, inventory/location RPCs.
-- [ ] `SECURITY DEFINER` functions are not grantable to arbitrary `authenticated` users.
-
----
-
-## 5. Per-app end-to-end smoke test (real accounts, prod)
-
-- [ ] **customer_app** — sign up / sign in → browse → add to cart → checkout (COD) → order appears in Orders → cancel.
-- [ ] **vendor** — sign in → see the order → accept → advance status → confirm customer + delivery see the update.
-- [ ] **delivery** — sign in (freelance *and* salaried) → claim/receive task → advance to delivered → COD collection recorded.
-- [ ] **admin** — sign in → each module loads real data (not mock) → vendor approve/reject → a CRUD write in one module round-trips.
-
----
-
-## 6. Known-incomplete (intentional — not blockers)
-
-- customer_app Profile: wallet top-up, Coupons, Rewards, Referrals, in-app Support, saved-address management, Settings/Help/About are `_comingSoon()` stubs. Forgot-password and Google login too. Checkout is **COD-only** (prepaid disabled).
-- admin: global cross-module search bar is deliberately disabled.
-- `PlaceholderScreen` widget class is defined-but-unused in vendor and delivery (dead code).
-
-## 7. Recommended before launch (non-blocking)
-
-- [ ] Wire a crash/error reporting sink — uncaught errors currently have no destination in any app.
-- [ ] Add a `go_router` `errorBuilder` to `delivery` and `admin` so an unknown deep link shows a branded page instead of go_router's default.
