@@ -6,6 +6,7 @@ import '../complaints/complaint_form_sheet.dart';
 import '../data/services_booking_repository.dart';
 import '../disputes/dispute_form_sheet.dart';
 import '../booking/extra_work_response_sheet.dart';
+import '../models/recurring_service_plan.dart';
 import '../models/service_booking.dart';
 import '../models/service_invoice.dart';
 import '../models/service_quotation.dart';
@@ -151,6 +152,44 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booking rescheduled.')));
       await _load();
+    } on ServicesException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => _isBusy = false);
+    }
+  }
+
+  /// Turns a completed service into a recurring / AMC plan. Reuses the same
+  /// `recurring_service_plans` insert (customer-self RLS, no RPC) the booking
+  /// form uses — the service, address and location come from this booking.
+  Future<void> _startRepeatPlan() async {
+    final booking = _booking;
+    if (booking == null || !booking.canStartRepeatPlan) return;
+    final result = await showModalBottomSheet<({String frequency, DateTime nextRun})>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _RepeatPlanSheet(firstBookingDate: booking.preferredDate),
+    );
+    if (result == null) return;
+    setState(() {
+      _isBusy = true;
+      _error = null;
+    });
+    try {
+      await _repo.createRecurringPlan(
+        serviceId: booking.serviceId,
+        address: booking.address,
+        lat: booking.lat!,
+        lng: booking.lng!,
+        frequency: result.frequency,
+        preferredTimeSlot: booking.preferredTimeSlot,
+        nextRunDate: result.nextRun,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Recurring plan set up. Manage it under Recurring plans.')),
+      );
     } on ServicesException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
@@ -438,6 +477,23 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                   child: SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _openReview, child: const Text('Rate & Review'))),
                 ),
 
+            if (booking.canStartRepeatPlan)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Card(
+                  color: const Color(0xFFF0FDF4),
+                  child: ListTile(
+                    leading: const Icon(Icons.event_repeat_outlined, color: Colors.green),
+                    title: const Text('Repeat this service', style: TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: const Text('Set up a recurring / AMC plan from this booking'),
+                    trailing: _isBusy
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.chevron_right),
+                    onTap: _isBusy ? null : _startRepeatPlan,
+                  ),
+                ),
+              ),
+
             const SizedBox(height: 12),
             Row(
               children: [
@@ -606,6 +662,110 @@ class _RescheduleSheetState extends State<_RescheduleSheet> {
                   child: ElevatedButton(
                     onPressed: () => Navigator.pop(context, (date: _date, slot: _slot)),
                     child: const Text('Confirm'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Pick a cadence + first run date for a recurring / AMC plan started from a
+/// completed booking. Returns `(frequency, nextRun)`; the time slot comes
+/// from the source booking. The `nextRun` default matches
+/// `RecurringServicePlan.nextRunAfter` and the server's cadence math.
+class _RepeatPlanSheet extends StatefulWidget {
+  final DateTime firstBookingDate;
+
+  const _RepeatPlanSheet({required this.firstBookingDate});
+
+  @override
+  State<_RepeatPlanSheet> createState() => _RepeatPlanSheetState();
+}
+
+class _RepeatPlanSheetState extends State<_RepeatPlanSheet> {
+  static const _options = [
+    ('weekly', 'Every week'),
+    ('biweekly', 'Every 2 weeks'),
+    ('monthly', 'Every month'),
+    ('quarterly', 'Every 3 months'),
+  ];
+
+  String _frequency = 'monthly';
+  late DateTime _nextRun = _defaultNextRun('monthly');
+
+  static DateTime _defaultNextRun(String frequency) {
+    final base = DateTime.now();
+    final computed = RecurringServicePlan.nextRunAfter(base, frequency);
+    // never in the past
+    return computed.isBefore(base) ? base.add(const Duration(days: 1)) : computed;
+  }
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _nextRun,
+      firstDate: now.add(const Duration(days: 1)),
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (picked != null) setState(() => _nextRun = picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Repeat this service', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: _frequency,
+              decoration: const InputDecoration(labelText: 'How often', border: OutlineInputBorder()),
+              items: [for (final o in _options) DropdownMenuItem(value: o.$1, child: Text(o.$2))],
+              onChanged: (v) => setState(() {
+                _frequency = v ?? _frequency;
+                _nextRun = _defaultNextRun(_frequency);
+              }),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _pickDate,
+              icon: const Icon(Icons.calendar_today_outlined, size: 18),
+              label: Text('First run: ${_nextRun.day}/${_nextRun.month}/${_nextRun.year}'),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Bookings are created automatically by SnapBee on each run date. '
+              'Pause or cancel any time under Recurring plans.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context, (frequency: _frequency, nextRun: _nextRun)),
+                    child: const Text('Set up plan'),
                   ),
                 ),
               ],

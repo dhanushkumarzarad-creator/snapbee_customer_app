@@ -38,4 +38,34 @@ void main() {
       expect(p.isActive, isFalse);
     });
   });
+
+  group('RecurringServicePlan.nextRunAfter — matches the SQL cadence math', () {
+    final from = DateTime(2026, 8, 15);
+
+    test('weekly = +7 days', () {
+      expect(RecurringServicePlan.nextRunAfter(from, 'weekly'), DateTime(2026, 8, 22));
+    });
+    test('biweekly = +14 days', () {
+      expect(RecurringServicePlan.nextRunAfter(from, 'biweekly'), DateTime(2026, 8, 29));
+    });
+    test('monthly = +1 calendar month', () {
+      expect(RecurringServicePlan.nextRunAfter(from, 'monthly'), DateTime(2026, 9, 15));
+      // month rollover
+      expect(RecurringServicePlan.nextRunAfter(DateTime(2026, 12, 10), 'monthly'), DateTime(2027, 1, 10));
+    });
+    test('quarterly = +3 calendar months', () {
+      expect(RecurringServicePlan.nextRunAfter(from, 'quarterly'), DateTime(2026, 11, 15));
+    });
+    test('custom uses the supplied interval, default 30', () {
+      expect(RecurringServicePlan.nextRunAfter(from, 'custom', customIntervalDays: 10), DateTime(2026, 8, 25));
+      expect(RecurringServicePlan.nextRunAfter(from, 'custom'), DateTime(2026, 9, 14));
+    });
+    test('unknown frequency falls back to monthly', () {
+      expect(RecurringServicePlan.nextRunAfter(from, 'yearly'), DateTime(2026, 9, 15));
+    });
+    test('drops the time component of `from`', () {
+      final r = RecurringServicePlan.nextRunAfter(DateTime(2026, 8, 15, 23, 59), 'weekly');
+      expect(r, DateTime(2026, 8, 22));
+    });
+  });
 }

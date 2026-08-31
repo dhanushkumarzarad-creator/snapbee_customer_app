@@ -43,7 +43,7 @@ class ServicesBookingRepository {
   final SupabaseClient _client;
 
   static const String _bookingSelect =
-      '*, services(name), service_vendors(business_name), '
+      '*, services(name, booking_types), service_vendors(business_name), '
       'service_booking_workers(technician_id, service_technicians(full_name))';
 
   Future<String> createBooking({

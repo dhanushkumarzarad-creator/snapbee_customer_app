@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/location/location_service.dart';
 import '../data/services_booking_repository.dart';
+import '../models/recurring_service_plan.dart';
 import '../models/service.dart';
 import '../service_records/my_bookings_screen.dart';
 
@@ -186,7 +187,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
             lng: _lng!,
             frequency: _recurringFrequency,
             preferredTimeSlot: _timeSlot,
-            nextRunDate: _nextRunAfter(_preferredDate!, _recurringFrequency),
+            nextRunDate: RecurringServicePlan.nextRunAfter(_preferredDate!, _recurringFrequency),
           );
         } on ServicesException catch (planError) {
           if (mounted) {
@@ -217,13 +218,6 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
       });
     }
   }
-
-  static DateTime _nextRunAfter(DateTime from, String frequency) => switch (frequency) {
-        'weekly' => from.add(const Duration(days: 7)),
-        'biweekly' => from.add(const Duration(days: 14)),
-        'quarterly' => DateTime(from.year, from.month + 3, from.day),
-        _ => DateTime(from.year, from.month + 1, from.day), // monthly
-      };
 
   static const _recurringOptions = [
     ('weekly', 'Every week'),

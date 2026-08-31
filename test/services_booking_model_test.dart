@@ -158,6 +158,59 @@ void main() {
       expect(row.advanceAmount, 0);
       expect(row.advancePaid, isFalse);
     });
+
+    Map<String, dynamic> completedRow({
+      List<String>? bookingTypes,
+      double? lat = 12.97,
+      double? lng = 77.59,
+      bool emergency = false,
+      String status = 'completed',
+    }) {
+      final service = <String, dynamic>{'name': 'AC Service'};
+      if (bookingTypes != null) service['booking_types'] = bookingTypes;
+      return {
+        'id': 'SVC-0003',
+        'service_id': 'svc-1',
+        'services': service,
+        'status': status,
+        'booking_type': emergency ? 'emergency' : 'one_time',
+        'is_emergency': emergency,
+        'address': '9 Residency Rd',
+        'lat': lat,
+        'lng': lng,
+        'preferred_date': '2026-09-01',
+        'preferred_time_slot': 'morning',
+        'quoted_price': 1200,
+        'created_at': '2026-08-24T10:00:00Z',
+      };
+    }
+
+    test('parses lat/lng and service booking_types', () {
+      final row = ServiceBookingRow.fromJson(completedRow(bookingTypes: ['one_time', 'recurring']));
+      expect(row.lat, 12.97);
+      expect(row.lng, 77.59);
+      expect(row.serviceBookingTypes, ['one_time', 'recurring']);
+      expect(row.serviceSupportsRecurring, isTrue);
+    });
+
+    test('canStartRepeatPlan — completed + recurring-capable + has location', () {
+      expect(ServiceBookingRow.fromJson(completedRow(bookingTypes: ['recurring'])).canStartRepeatPlan, isTrue);
+      expect(ServiceBookingRow.fromJson(completedRow(bookingTypes: ['amc'])).canStartRepeatPlan, isTrue);
+    });
+
+    test('canStartRepeatPlan is false without a recurring-capable service type', () {
+      expect(ServiceBookingRow.fromJson(completedRow(bookingTypes: ['one_time'])).canStartRepeatPlan, isFalse);
+      expect(ServiceBookingRow.fromJson(completedRow(bookingTypes: null)).canStartRepeatPlan, isFalse);
+    });
+
+    test('canStartRepeatPlan is false for not-completed / emergency / missing location', () {
+      expect(ServiceBookingRow.fromJson(completedRow(bookingTypes: ['recurring'], status: 'work_in_progress'))
+          .canStartRepeatPlan, isFalse);
+      expect(ServiceBookingRow.fromJson(completedRow(bookingTypes: ['recurring'], emergency: true))
+          .canStartRepeatPlan, isFalse);
+      expect(ServiceBookingRow.fromJson(completedRow(bookingTypes: ['recurring'], lat: null))
+          .canStartRepeatPlan, isFalse);
+    });
   });
 
   group('ServiceVendorListing.fromJson', () {

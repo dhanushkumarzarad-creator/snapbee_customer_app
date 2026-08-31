@@ -31,6 +31,22 @@ class RecurringServicePlan {
   bool get isPaused => status == 'paused';
   bool get isCancelled => status == 'cancelled';
 
+  /// First run date for a plan started from a booking on [from]. Mirrors the
+  /// `case p.frequency` interval math in
+  /// `supabase/recurring_service_plans_generator.sql` so the app and the
+  /// server agree on the cadence. Used by both the booking form and the
+  /// "repeat this completed service" flow.
+  static DateTime nextRunAfter(DateTime from, String frequency, {int? customIntervalDays}) {
+    final d = DateTime(from.year, from.month, from.day);
+    return switch (frequency) {
+      'weekly' => d.add(const Duration(days: 7)),
+      'biweekly' => d.add(const Duration(days: 14)),
+      'quarterly' => DateTime(d.year, d.month + 3, d.day),
+      'custom' => d.add(Duration(days: customIntervalDays ?? 30)),
+      _ => DateTime(d.year, d.month + 1, d.day), // monthly (default)
+    };
+  }
+
   String get frequencyLabel => switch (frequency) {
         'weekly' => 'Every week',
         'biweekly' => 'Every 2 weeks',

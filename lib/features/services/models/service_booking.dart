@@ -119,8 +119,11 @@ class ServiceBookingRow {
   final String bookingType;
   final bool isInspection;
   final String address;
+  final double? lat;
+  final double? lng;
   final DateTime preferredDate;
   final String preferredTimeSlot;
+  final List<String> serviceBookingTypes;
   final double quotedPrice;
   final String? customerNotes;
   final bool isEmergency;
@@ -146,8 +149,11 @@ class ServiceBookingRow {
     required this.bookingType,
     required this.isInspection,
     required this.address,
+    this.lat,
+    this.lng,
     required this.preferredDate,
     required this.preferredTimeSlot,
+    this.serviceBookingTypes = const [],
     required this.quotedPrice,
     this.customerNotes,
     required this.isEmergency,
@@ -184,8 +190,12 @@ class ServiceBookingRow {
       bookingType: json['booking_type'] as String? ?? 'one_time',
       isInspection: json['is_inspection'] as bool? ?? false,
       address: json['address'] as String? ?? '',
+      lat: (json['lat'] as num?)?.toDouble(),
+      lng: (json['lng'] as num?)?.toDouble(),
       preferredDate: DateTime.parse(json['preferred_date'] as String),
       preferredTimeSlot: json['preferred_time_slot'] as String,
+      serviceBookingTypes:
+          ((service?['booking_types'] as List?) ?? const []).map((e) => e.toString()).toList(),
       quotedPrice: (json['quoted_price'] as num).toDouble(),
       customerNotes: json['customer_notes'] as String?,
       isEmergency: json['is_emergency'] as bool? ?? false,
@@ -201,4 +211,18 @@ class ServiceBookingRow {
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
+
+  /// The service behind this booking supports at least one recurring-style
+  /// booking type — the same set `generate_due_recurring_bookings()` accepts.
+  bool get serviceSupportsRecurring =>
+      serviceBookingTypes.any((t) => const {'recurring', 'amc', 'scheduled'}.contains(t));
+
+  /// A completed, non-emergency booking whose service can recur, with a
+  /// usable location — safe to offer "repeat this service" for.
+  bool get canStartRepeatPlan =>
+      status == ServiceBookingStatus.completed &&
+      !isEmergency &&
+      serviceSupportsRecurring &&
+      lat != null &&
+      lng != null;
 }
