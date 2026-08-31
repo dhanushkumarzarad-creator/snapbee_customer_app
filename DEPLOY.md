@@ -15,6 +15,66 @@ Claude memory store). Sections below reflect live inspection of the production p
 
 ---
 
+## 0. Per-app status (2026-08-31)
+
+All four: `flutter analyze` 0 issues · `flutter test` 645 pass (65 / 73 / 173 / 334), 0 fail / 0 skip ·
+`flutter build web` ✅. All on GitHub (private, `dhanushkumarzarad-creator`), `master` in sync.
+
+### `snapbee_customer_app` — code-ready; ships as a COD-only shopping app
+- Navigator-based routing; auth gate via `StreamBuilder` on Supabase auth state — no lockout/loop.
+- Real end-to-end: signup/login, home/catalog, cart, checkout (`place_customer_order`), orders list,
+  cancel (`cancel_customer_order`), wishlist, order history, Services sector.
+- No `.env` — URL + publishable key inlined in `lib/main.dart` (correct).
+- Intentional gaps (need product sign-off, not code): COD only; no Google login; no forgot-password;
+  Profile menu stubs — wallet top-up, Coupons, Rewards, Referrals, in-app Support, saved-address
+  management, Settings, Help, About.
+
+### `snapbee_vendor` — code-ready; blocked only by deploy-time `.env` + real vendor data
+- `go_router` (mobile bottom-nav shell / web sidebar) with auth-redirect gate — every route maps to
+  a real screen.
+- 13 repositories wired to Supabase at the composition root when `.env` is present; falls back to
+  in-memory mocks if `.env` is missing (no crash, but not production).
+- Real: onboarding + self-registration → admin approval, orders (accept/reject/advance), catalog,
+  inventory, earnings, club/commission, delivery assignment, documents, notifications, support,
+  business profile/location.
+- Dead code: unused `PlaceholderScreen` class (harmless).
+
+### `snapbee_delivery` — code-ready, highest test coverage; two operational gaps
+- `go_router` with auth redirect; service-provider sub-module has its own auth.
+- 11 repositories hard-overridden to Supabase at the composition root. Hard-crashes on startup
+  (blank page) if `.env` is missing — `dotenv.env['SUPABASE_URL']!`.
+- Real: login (freelance + salaried), tasks/job details, claim/receive, status advance,
+  proof-of-delivery, COD collection + settlement, live location upload, earnings, support.
+- Automated dispatch is inert: `select_best_candidate` INNER-JOINs `vehicles` +
+  `delivery_partner_locations`, both empty in prod. Manual assignment (`assign_delivery_manually`,
+  from vendor/admin) works now and does not touch those tables; auto-dispatch activates as real
+  partners onboard (vehicle assigned → go Online → GPS pings).
+- Dead code: unused `PlaceholderScreen` class.
+
+### `snapbee_admin` — code-ready; the mature reference app; blocked only by deploy-time `.env`
+- `go_router` sidebar shell, permission-gated. Leftover `[DIAG]` diagnostics block removed from
+  `main.dart` (`0150cca`).
+- All modules load real Supabase data; per-repo mock fallback only fires on a genuinely-missing
+  table (`42P01`), every other error rethrows — effectively dead code (all tables exist).
+- Boots with empty credentials if `.env` is missing → all Supabase calls fail.
+- Intentional: global cross-module search bar disabled; in-app notification bell auto-disables
+  unless `admin_notifications` is confirmed live.
+
+### Backend — Supabase `zhdhkvoxkdmsuiyehgsw`
+- RLS enabled on every core/sensitive table with real (non-`true`) policies; no `PUBLIC` grants;
+  `anon` SELECT limited to 6 catalog tables.
+- `TRUNCATE` / `REFERENCES` / `TRIGGER` revoked from `anon` + `authenticated` on all public tables
+  (`supabase/revoke_truncate_from_client_roles.sql`, `d6c48ba`) — verified 0 remain, DML + service_role
+  untouched.
+- Settings tables + delivery config/pricing/capacity rules seeded; all 15 AI-hardening migrations
+  applied + verified (2026-08-28).
+- Not production-ready: data is test/demo only (1 usable vendor `Local Store`; `sss` / `vfvf` /
+  Demo A/B junk; 4 of 5 vendors have no branch; `vehicles` = 0; `delivery_partner_locations` = 0).
+  Auth dashboard config (URLs / SMTP / backups) not verified. `supabase_admin`-owned default
+  privileges + `MAINTAIN` residuals remain (see §2).
+
+---
+
 ## 1. MUST DO BEFORE LAUNCH
 
 ### 1.1 — Provision `.env` in the deploy build for vendor / delivery / admin
