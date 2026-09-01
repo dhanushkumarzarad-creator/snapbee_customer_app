@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/idempotency.dart';
 import '../data/travel_repository.dart';
 import '../theme/travel_colors.dart';
-import '../booking/trip_bookings_screen.dart';
+import 'hotel_bookings_screen.dart';
 
 /// Hotel details -> Room types -> Dates/Guests -> Book. Booking history for
 /// hotels is combined with My Trips is out of scope here — hotel bookings
@@ -24,6 +25,12 @@ class _HotelRoomsScreenState extends State<HotelRoomsScreen> {
   DateTime _checkOut = DateTime.now().add(const Duration(days: 2));
   final int _guests = 2;
   bool _booking = false;
+  // One idempotency key per room (not one for the whole screen) — this
+  // screen lists multiple bookable rooms, and a retry must only replay
+  // the SAME room's booking intent, never a different room's.
+  final Map<String, String> _idempotencyKeys = {};
+
+  String _idempotencyKeyFor(String roomId) => _idempotencyKeys.putIfAbsent(roomId, generateIdempotencyKey);
 
   @override
   void initState() {
@@ -44,12 +51,14 @@ class _HotelRoomsScreenState extends State<HotelRoomsScreen> {
   Future<void> _book(Map<String, dynamic> room) async {
     setState(() => _booking = true);
     try {
+      final roomId = room['id'] as String;
       final bookingId = await _repo.createHotelBooking(
-        roomId: room['id'] as String,
+        roomId: roomId,
         checkIn: _checkIn,
         checkOut: _checkOut,
         roomsCount: 1,
         guestsCount: _guests,
+        idempotencyKey: _idempotencyKeyFor(roomId),
       );
       if (!mounted) return;
       await showDialog(
@@ -61,7 +70,7 @@ class _HotelRoomsScreenState extends State<HotelRoomsScreen> {
         ),
       );
       if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const TripBookingsScreen()), (r) => r.isFirst);
+      Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const HotelBookingsScreen()), (r) => r.isFirst);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Booking failed: $e')));
     } finally {

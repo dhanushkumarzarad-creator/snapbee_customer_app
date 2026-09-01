@@ -92,8 +92,18 @@ class EntertainmentRepository {
     return List<Map<String, dynamic>>.from(rows as List);
   }
 
-  Future<String> bookEvent({required String eventId, required List<Map<String, dynamic>> items, Map<String, dynamic> guestDetails = const {}}) async {
-    final id = await _client.rpc('create_event_booking', params: {'p_event_id': eventId, 'p_items': items, 'p_guest_details': guestDetails});
+  Future<String> bookEvent({
+    required String eventId,
+    required List<Map<String, dynamic>> items,
+    Map<String, dynamic> guestDetails = const {},
+    String? idempotencyKey,
+  }) async {
+    final id = await _client.rpc('create_event_booking', params: {
+      'p_event_id': eventId,
+      'p_items': items,
+      'p_guest_details': guestDetails,
+      'p_idempotency_key': idempotencyKey,
+    });
     return id as String;
   }
 
@@ -113,13 +123,19 @@ class EntertainmentRepository {
     return List<Map<String, dynamic>>.from(rows as List);
   }
 
-  Future<String> bookPark({required String parkId, required DateTime visitDate, required List<Map<String, dynamic>> items}) async {
+  Future<String> bookPark({
+    required String parkId,
+    required DateTime visitDate,
+    required List<Map<String, dynamic>> items,
+    String? idempotencyKey,
+  }) async {
     final id = await _client.rpc('create_amusement_park_booking', params: {
       'p_park_id': parkId,
       'p_visit_date': visitDate.toIso8601String().split('T').first,
       'p_items': items,
       'p_add_ons': const [],
       'p_guest_details': const {},
+      'p_idempotency_key': idempotencyKey,
     });
     return id as String;
   }

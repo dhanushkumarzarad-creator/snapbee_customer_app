@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../booking/trip_booking_screen.dart';
 import '../booking/trip_bookings_screen.dart';
+import '../hotels/hotel_bookings_screen.dart';
 import '../hotels/hotel_search_screen.dart';
 import '../theme/travel_colors.dart';
 
@@ -20,7 +21,18 @@ class TravelMainScreen extends StatelessWidget {
         backgroundColor: TravelColors.primary,
         foregroundColor: Colors.white,
         actions: [
-          IconButton(icon: const Icon(Icons.receipt_long), tooltip: 'My Trips', onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TripBookingsScreen()))),
+          PopupMenuButton<int>(
+            icon: const Icon(Icons.receipt_long),
+            tooltip: 'My Bookings',
+            onSelected: (i) {
+              if (i == 0) Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TripBookingsScreen()));
+              if (i == 1) Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HotelBookingsScreen()));
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 0, child: Text('My Trips')),
+              PopupMenuItem(value: 1, child: Text('My Hotel Bookings')),
+            ],
+          ),
         ],
       ),
       body: Padding(

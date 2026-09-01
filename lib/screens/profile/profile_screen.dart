@@ -11,6 +11,7 @@ import '../orders/orders_screen.dart';
 import '../wishlist/wishlist_screen.dart';
 import '../order_history/order_history_screen.dart';
 import '../order_history/models/order_history_model.dart';
+import '../../features/booking_history/presentation/booking_history_screen.dart';
 import 'widgets/membership_card.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -501,6 +502,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           context,
                           MaterialPageRoute(
                             builder: (_) => const OrdersScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    const Divider(height: 1),
+                    _menuTile(
+                      Icons.receipt_long_outlined,
+                      "Booking History",
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const BookingHistoryScreen(),
                           ),
                         );
                       },

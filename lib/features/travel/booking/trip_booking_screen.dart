@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/idempotency.dart';
 import '../data/travel_repository.dart';
 import '../theme/travel_colors.dart';
 import 'trip_bookings_screen.dart';
@@ -27,6 +28,7 @@ class _TripBookingScreenState extends State<TripBookingScreen> {
   DateTime _endDate = DateTime.now().add(const Duration(days: 2));
   int _passengers = 4;
   bool _withDriver = true;
+  final String _idempotencyKey = generateIdempotencyKey();
 
   List<Map<String, dynamic>> _vehicleTypes = [];
   String? _selectedVehicleTypeId;
@@ -150,6 +152,7 @@ class _TripBookingScreenState extends State<TripBookingScreen> {
         passengers: _passengers,
         withDriver: _withDriver,
         purpose: _purpose.text.trim().isEmpty ? null : _purpose.text.trim(),
+        idempotencyKey: _idempotencyKey,
       );
       if (!mounted) return;
       await showDialog(

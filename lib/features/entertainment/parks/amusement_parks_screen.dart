@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/idempotency.dart';
 import '../data/entertainment_repository.dart';
 import '../theme/entertainment_colors.dart';
 
@@ -64,6 +65,7 @@ class _AmusementParksScreenState extends State<AmusementParksScreen> {
     }
     final quantities = {for (final t in ticketTypes) t['id'] as String: 0};
     DateTime visitDate = DateTime.now().add(const Duration(days: 1));
+    final idempotencyKey = generateIdempotencyKey();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -112,7 +114,7 @@ class _AmusementParksScreenState extends State<AmusementParksScreen> {
                       : () async {
                           final items = quantities.entries.where((e) => e.value > 0).map((e) => {'ticket_type_id': e.key, 'quantity': e.value}).toList();
                           try {
-                            final bookingId = await _repo.bookPark(parkId: park['id'] as String, visitDate: visitDate, items: items);
+                            final bookingId = await _repo.bookPark(parkId: park['id'] as String, visitDate: visitDate, items: items, idempotencyKey: idempotencyKey);
                             if (sheetContext.mounted) Navigator.pop(sheetContext);
                             if (context.mounted) {
                               showDialog(
