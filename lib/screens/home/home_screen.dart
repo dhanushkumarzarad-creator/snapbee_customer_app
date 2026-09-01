@@ -18,6 +18,8 @@ import '../cart/cart_screen.dart';
 import '../products/product_details_screen.dart';
 import '../search/search_screen.dart';
 import '../../features/services/services_main_screen.dart';
+import '../../features/travel/home/travel_main_screen.dart';
+import '../../features/entertainment/home/entertainment_main_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -141,16 +143,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
               ServiceTabsWidget(
                 onTabTap: (index) {
-                  // Index 1 = "Services" (home services: AC repair,
-                  // plumbing, electrician, cleaning, etc.) — the only tab
-                  // with a real destination today. Travel/Entertainment/
-                  // E-Commerce (2-4) stay no-ops; they're not built yet and
-                  // out of scope here.
-                  if (index == 1) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const ServicesMainScreen()),
-                    );
+                  // Index 1 = Services, 2 = Travel, 3 = Entertainment — all
+                  // real destinations now. E-Commerce (4) stays a no-op;
+                  // that sector has not been built yet and is out of scope
+                  // here.
+                  switch (index) {
+                    case 1:
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const ServicesMainScreen()),
+                      );
+                      break;
+                    case 2:
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const TravelMainScreen()),
+                      );
+                      break;
+                    case 3:
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const EntertainmentMainScreen()),
+                      );
+                      break;
                   }
                 },
               ),
