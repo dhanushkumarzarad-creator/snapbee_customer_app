@@ -77,13 +77,27 @@ All four: `flutter analyze` 0 issues · `flutter test` 645 pass (65 / 73 / 173 /
 
 ## 1. MUST DO BEFORE LAUNCH
 
-### 1.1 — Provision `.env` in the deploy build for vendor / delivery / admin
+### 1.1 — Provision `.env` in the deploy build for every dotenv app
 `.env` is gitignored and bundled as a Flutter asset. A fresh clone has none — `delivery` hard-crashes
-without it, `vendor` falls back to mock repos, `admin` boots with empty credentials.
+without it, `vendor` falls back to mock repos, `admin` boots with empty credentials, and each of the
+four Services provider apps boots with an empty Supabase URL/key (Supabase never initializes; every
+screen shows its error state).
 
-**Steps** — in the CI/deploy job, *before* `flutter build web`, create the file at each app root
-(sibling of `pubspec.yaml`): `snapbee_vendor/.env`, `snapbee_delivery/.env`, `snapbee_admin/.env`,
-each containing exactly:
+**Seven apps read `.env`** (`snapbee_customer_app` does NOT — its values are inlined in `lib/main.dart`,
+which is correct and needs no action):
+
+| App | `.env` path (sibling of `pubspec.yaml`) | `.env.example` committed |
+|---|---|---|
+| `snapbee_admin` | `snapbee_admin/.env` | yes |
+| `snapbee_vendor` | `snapbee_vendor/.env` | yes |
+| `snapbee_delivery` | `snapbee_delivery/.env` | yes |
+| `snapbee_services_admin` | `snapbee_services_admin/.env` | yes |
+| `snapbee_services_vendor` | `snapbee_services_vendor/.env` | yes |
+| `snapbee_services_technician` | `snapbee_services_technician/.env` | yes |
+| `snapbee_services_inspector` | `snapbee_services_inspector/.env` | yes |
+
+**Steps** — in the CI/deploy job, *before* `flutter build web`, write each `.env` above containing
+exactly:
 
 ```dotenv
 SUPABASE_URL=https://zhdhkvoxkdmsuiyehgsw.supabase.co
@@ -91,13 +105,18 @@ SUPABASE_ANON_KEY=sb_publishable_6CT-UQ0hog6b4Y9oOEljSw_LMH3V3D5
 APP_ENV=production
 ```
 
-Then build. **Verify:** `build/web/assets/.env` in the output shows `APP_ENV=production`.
-`snapbee_customer_app` needs nothing (values already inlined in `lib/main.dart`, correct).
-**Never** put a `service_role`/secret key in `.env` — it ships to every browser.
+(Every app's `.env.example` is exactly this shape with `APP_ENV=development` — `cp .env.example .env`
+then flip `APP_ENV`.) Then build. **Verify:** `build/web/assets/.env` in each output shows
+`APP_ENV=production`. **Never** put a `service_role`/secret key in `.env` — it ships to every browser.
+The `SUPABASE_ANON_KEY` above is the *publishable* key; RLS is the security boundary.
 
-- [ ] `snapbee_vendor/.env` written in deploy build
-- [ ] `snapbee_delivery/.env` written in deploy build
-- [ ] `snapbee_admin/.env` written in deploy build
+- [ ] `snapbee_admin/.env`
+- [ ] `snapbee_vendor/.env`
+- [ ] `snapbee_delivery/.env`
+- [ ] `snapbee_services_admin/.env`
+- [ ] `snapbee_services_vendor/.env`
+- [ ] `snapbee_services_technician/.env`
+- [ ] `snapbee_services_inspector/.env`
 
 ### 1.2 — Configure Supabase Auth URL settings for the deployed domains
 Not verified in the audit. Auth email links / session redirects break if the deployed origins aren't
@@ -105,11 +124,16 @@ registered.
 
 **Steps** — Dashboard → project `zhdhkvoxkdmsuiyehgsw`:
 1. **Authentication → URL Configuration → Site URL** = deployed customer-app URL.
-2. **Redirect URLs** — add the deployed URL of all four apps, each with `/**`.
-3. **Authentication → Providers → Email** — confirm "Confirm email" matches the intended flow.
+2. **Redirect URLs** — add the deployed URL of **all eight apps**, each with `/**`:
+   customer app, admin, vendor, delivery, Services admin, Services vendor,
+   Services technician, Services inspector. (Every app authenticates against the
+   same project; any app whose origin is not listed will fail its auth callback.)
+3. **Authentication → CORS / allowed origins** — add each deployed origin.
+4. **Authentication → Providers → Email** — confirm "Confirm email" matches the intended flow.
 
 - [ ] Site URL set
-- [ ] Redirect URLs added for all 4 apps
+- [ ] Redirect URLs added for all 8 apps
+- [ ] Allowed origins added for all 8 apps
 - [ ] Email-confirmation setting confirmed
 
 ### 1.3 — Replace the default auth email sender (custom SMTP)
