@@ -12,6 +12,17 @@
 .swiftpm/
 migrate_working_dir/
 
+# Environment / secrets (defensive — this app currently hardcodes only the
+# public Supabase URL + publishable anon key in lib/main.dart, but never let a
+# real .env or service-account file slip in)
+.env
+.env.*
+!.env.example
+**/google-services.json
+**/GoogleService-Info.plist
+**/*service-account*.json
+**/*serviceAccount*.json
+
 # IntelliJ related
 *.iml
 *.ipr
