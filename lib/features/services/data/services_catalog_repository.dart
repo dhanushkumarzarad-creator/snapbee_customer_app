@@ -11,6 +11,8 @@
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../data/repositories/catalog_coverage_filter.dart';
+import '../../../data/repositories/coverage_repository.dart';
 import '../models/service.dart';
 import '../models/service_category.dart';
 import '../models/service_offer.dart';
@@ -19,9 +21,19 @@ import '../models/service_vendor.dart';
 import '../models/service_vendor_summary.dart';
 
 class ServicesCatalogRepository {
-  ServicesCatalogRepository(this._client);
+  ServicesCatalogRepository(this._client, {CatalogCoverageFilter? coverageFilter})
+      : _coverage = coverageFilter ??
+            CatalogCoverageFilter.forServiceVendors(CoverageRepository(_client));
 
   final SupabaseClient _client;
+
+  /// Browse-time gate that hides service providers outside the customer's
+  /// allowed coverage (india / state / district / radius, backed by
+  /// `service_areas` via `service_vendor_ids_in_coverage`). Applied to the
+  /// customer-facing provider listings below so an out-of-coverage provider
+  /// never appears in a list — not merely at booking. Fails open (see
+  /// [CatalogCoverageFilter]).
+  final CatalogCoverageFilter _coverage;
 
   Future<List<ServiceCategoryRow>> fetchCategories() async {
     try {
@@ -106,7 +118,10 @@ class ServicesCatalogRepository {
           .select('id, business_name, business_type, rating_avg, rating_count')
           .order('rating_avg', ascending: false)
           .limit(limit);
-      return (rows as List).map((r) => ServiceVendorSummary.fromJson(Map<String, dynamic>.from(r as Map))).toList();
+      final vendors = (rows as List)
+          .map((r) => ServiceVendorSummary.fromJson(Map<String, dynamic>.from(r as Map)))
+          .toList();
+      return _coverage.apply(vendors, (v) => v.id);
     } catch (_) {
       return const [];
     }
@@ -158,10 +173,11 @@ class ServicesCatalogRepository {
           .select('price, service_vendors(id, business_name, business_type, rating_avg, rating_count)')
           .eq('service_id', serviceId)
           .eq('status', 'approved');
-      return (rows as List)
+      final providers = (rows as List)
           .map((r) => ServiceVendorListing.fromJson(Map<String, dynamic>.from(r as Map)))
           .toList()
         ..sort((a, b) => b.ratingAvg.compareTo(a.ratingAvg));
+      return _coverage.apply(providers, (p) => p.vendorId);
     } catch (_) {
       return const [];
     }

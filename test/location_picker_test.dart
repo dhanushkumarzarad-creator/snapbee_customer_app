@@ -39,12 +39,16 @@ class _FakeGeocoding implements GeocodingService {
 
   @override
   Future<String?> reverse(double lat, double lng) async => reverseResult;
+
+  @override
+  Future<GeoAddress> reverseDetailed(double lat, double lng) async =>
+      GeoAddress(displayName: reverseResult);
 }
 
 class _FakeLocationService implements LocationService {
   LocationResult? result;
   LocationException? error;
-  _FakeLocationService({this.result, this.error});
+  _FakeLocationService({this.error});
 
   @override
   Future<LocationResult> getCurrentLocation() async {

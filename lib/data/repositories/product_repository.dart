@@ -22,6 +22,9 @@
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'catalog_coverage_filter.dart';
+import 'coverage_repository.dart';
+
 class ProductRow {
   final String id;
   final String name;
@@ -71,9 +74,18 @@ class ProductRow {
 }
 
 class ProductRepository {
-  ProductRepository(this._client);
+  ProductRepository(this._client, {CatalogCoverageFilter? coverageFilter})
+      : _coverage = coverageFilter ??
+            CatalogCoverageFilter.forVendors(CoverageRepository(_client));
 
   final SupabaseClient _client;
+
+  /// Browse-time gate that hides vendors outside the customer's allowed
+  /// coverage (india / state / district / radius). Applied to every
+  /// customer-facing list this repository returns — home, category, list and
+  /// search — so an out-of-coverage vendor's products never reach the UI,
+  /// not merely the checkout. Fails open (see [CatalogCoverageFilter]).
+  final CatalogCoverageFilter _coverage;
 
   static const String _table = 'products';
   static const String _fullColumns =
@@ -111,17 +123,21 @@ class ProductRepository {
   /// needs its own instance. Tries `image_urls` first; falls back to the
   /// base column set if that column isn't migrated in yet, same pattern
   /// this app's category repository uses for `display_order`.
+  ///
+  /// Every customer-facing list goes through here, so browse-time vendor
+  /// coverage filtering is applied in exactly one place (covers home,
+  /// category, list and search).
   Future<List<ProductRow>> _fetch(
     PostgrestTransformBuilder<PostgrestList> Function(String columns) build,
   ) async {
+    List<ProductRow> mapped;
     try {
-      final rows = await build(_fullColumns);
-      return _mapRows(rows);
+      mapped = _mapRows(await build(_fullColumns));
     } on PostgrestException catch (error) {
       if (error.code != '42703') rethrow;
-      final rows = await build(_baseColumns);
-      return _mapRows(rows);
+      mapped = _mapRows(await build(_baseColumns));
     }
+    return _coverage.apply(mapped, (row) => row.vendorId);
   }
 
   /// Resolves [categoryName] (case-insensitive) to a category (and its

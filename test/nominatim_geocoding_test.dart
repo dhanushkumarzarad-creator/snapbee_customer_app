@@ -7,6 +7,12 @@ import 'package:snapbee_customer_app/core/map/geocoding_service.dart';
 /// results, and every failure mode mapping to a typed [GeocodingException].
 /// Uses http's MockClient; no real network.
 void main() {
+  // The search/reverse caches and the rate-limit gate are process-wide
+  // static state (deliberately — they enforce Nominatim's <=1 req/s policy
+  // across every screen). Reset them between cases so a cached hit from one
+  // test can't satisfy another test that reuses the same query string.
+  setUp(NominatimGeocodingService.debugResetSharedState);
+
   group('NominatimGeocodingService.search', () {
     test('parses a jsonv2 result array into GeoPlace list', () async {
       final svc = NominatimGeocodingService(
