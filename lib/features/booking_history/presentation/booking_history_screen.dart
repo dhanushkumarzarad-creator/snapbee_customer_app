@@ -11,6 +11,7 @@ const Map<String, String> _categoryLabels = {
   'movie': 'Movie',
   'event': 'Event',
   'amusement_park': 'Amusement Park',
+  'ecommerce': 'E-Commerce',
 };
 
 const Map<String, IconData> _categoryIcons = {
@@ -21,6 +22,7 @@ const Map<String, IconData> _categoryIcons = {
   'movie': Icons.movie,
   'event': Icons.event,
   'amusement_park': Icons.attractions,
+  'ecommerce': Icons.storefront,
 };
 
 const Map<String, Color> _categoryColors = {
@@ -31,6 +33,7 @@ const Map<String, Color> _categoryColors = {
   'movie': Color(0xFF6A2FB0),
   'event': Color(0xFF6A2FB0),
   'amusement_park': Color(0xFF6A2FB0),
+  'ecommerce': Color(0xFF3F4EC7),
 };
 
 /// Profile -> Booking History: ALL bookings, category-wise, each keeping

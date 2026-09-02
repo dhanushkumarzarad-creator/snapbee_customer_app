@@ -20,6 +20,7 @@ import '../search/search_screen.dart';
 import '../../features/services/services_main_screen.dart';
 import '../../features/travel/home/travel_main_screen.dart';
 import '../../features/entertainment/home/entertainment_main_screen.dart';
+import '../../features/ecommerce/home/ecommerce_main_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -143,10 +144,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
               ServiceTabsWidget(
                 onTabTap: (index) {
-                  // Index 1 = Services, 2 = Travel, 3 = Entertainment — all
-                  // real destinations now. E-Commerce (4) stays a no-op;
-                  // that sector has not been built yet and is out of scope
-                  // here.
+                  // Index 1 = Services, 2 = Travel, 3 = Entertainment,
+                  // 4 = E-Commerce — all real destinations now.
                   switch (index) {
                     case 1:
                       Navigator.push(
@@ -164,6 +163,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const EntertainmentMainScreen()),
+                      );
+                      break;
+                    case 4:
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const EcommerceMainScreen()),
                       );
                       break;
                   }
