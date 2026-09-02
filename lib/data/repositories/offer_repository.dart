@@ -18,6 +18,8 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../screens/offers/offer_models.dart';
+import 'catalog_coverage_filter.dart';
+import 'coverage_repository.dart';
 
 /// The three reads the Offer Zone screen depends on. Kept as an interface so
 /// the screen can be widget-tested with a fake.
@@ -28,9 +30,18 @@ abstract class OfferSource {
 }
 
 class OfferRepository implements OfferSource {
-  OfferRepository(this._client);
+  OfferRepository(this._client, {CatalogCoverageFilter? coverageFilter})
+      : _coverage = coverageFilter ??
+            CatalogCoverageFilter.forVendors(CoverageRepository(_client));
 
   final SupabaseClient _client;
+
+  /// The Offer Zone's special-offers list is a customer-facing product browse
+  /// surface, so it goes through the same browse-time vendor coverage gate as
+  /// the rest of the catalogue (Home / category / list / search). Fails open
+  /// (see [CatalogCoverageFilter]). Hero banners and coupons are not
+  /// vendor-scoped and are left unfiltered.
+  final CatalogCoverageFilter _coverage;
 
   /// Active, in-window banners with an image. Empty list on any failure.
   @override
@@ -99,12 +110,13 @@ class OfferRepository implements OfferSource {
           .not('discount_price', 'is', null)
           .order('updated_at', ascending: false)
           .limit(limit);
-      return (rows as List)
+      final offers = (rows as List)
           .map((raw) => raw as Map<String, dynamic>)
           .map(_mapSpecialOffer)
           .where((p) => p != null)
           .cast<SpecialOfferProduct>()
           .toList();
+      return _coverage.apply(offers, (p) => p.vendorId);
     } on PostgrestException catch (error) {
       // discount_price column not migrated in yet -> no special offers.
       if (error.code == '42703') return const [];
