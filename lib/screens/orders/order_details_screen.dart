@@ -1,8 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/map/osm_map.dart';
 import '../../data/repositories/live_tracking_repository.dart';
 import '../../data/repositories/order_repository.dart';
 import '../order_history/models/order_history_model.dart';
@@ -532,6 +535,23 @@ class _LiveTrackingBody extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
+        if (loc != null) ...[
+          StaticLocationMap(
+            point: LatLng(loc.lat, loc.lng),
+            zoom: 15,
+            height: 160,
+            pinColor: kSnapBeeOrange,
+            extraMarkers: [
+              Marker(
+                point: LatLng(loc.lat, loc.lng),
+                width: 36,
+                height: 36,
+                child: const Icon(Icons.two_wheeler_rounded, color: kSnapBeeOrange, size: 26),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+        ],
         Text(
           loc == null
               ? 'Waiting for a location update…'

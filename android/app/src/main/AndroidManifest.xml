@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Network: Supabase API + OpenStreetMap raster tiles + Nominatim geocoding
+         (release builds don't inherit the debug/profile INTERNET permission). -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Required for checkout's real delivery-eligibility location check -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>

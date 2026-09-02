@@ -42,6 +42,13 @@ dependencies:
   # compute_delivery_quote/place_customer_order real customer_lat/lng).
   # Same version snapbee_delivery already depends on.
   geolocator: ^13.0.1
+  # OpenStreetMap mapping stack — free raster tiles + Nominatim geocoding.
+  # No API key or paid service; see lib/core/map/map_config.dart for the
+  # single place tile / geocoding endpoints are configured (swappable for a
+  # self-hosted OSM server later without touching any screen).
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+  http: ^1.2.2
 
 dev_dependencies:
   flutter_test:

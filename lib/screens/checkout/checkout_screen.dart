@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:latlong2/latlong.dart';
+
 import '../../core/constants/app_colors.dart';
 import '../../core/location/location_service.dart';
+import '../../core/map/location_picker_screen.dart';
+import '../../core/map/osm_map.dart';
+import '../../core/map/picked_location.dart';
 import '../../data/cart/cart_store.dart';
 import '../../data/repositories/checkout_repository.dart';
 import '../../data/repositories/order_repository.dart';
@@ -43,7 +48,6 @@ class CheckoutScreen extends StatefulWidget {
 class _CheckoutScreenState extends State<CheckoutScreen> {
   final _checkoutRepository = CheckoutRepository(Supabase.instance.client);
   final _orderRepository = OrderRepository(Supabase.instance.client);
-  final _locationService = LocationService();
   final _addressController = TextEditingController();
 
   // Cash on Delivery is the only real, backend-enforced payment method
@@ -57,8 +61,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String? _contextError;
   VendorDeliveryContext? _vendorContext;
 
-  bool _isLocating = false;
-  String? _locationError;
+  /// Set only from the map picker — a real coordinate the customer
+  /// confirmed on the map (device GPS, a search hit, or a deliberate drag).
   LocationResult? _location;
 
   bool _isPlacingOrder = false;
@@ -127,25 +131,28 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  Future<void> _detectLocation() async {
+  Future<void> _openLocationPicker() async {
+    final picked = await Navigator.of(context).push<PickedLocation>(
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initial: _location == null
+              ? null
+              : PickedLocation(
+                  latitude: _location!.latitude,
+                  longitude: _location!.longitude,
+                  address: _addressController.text.trim(),
+                ),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
     setState(() {
-      _isLocating = true;
-      _locationError = null;
+      _location = LocationResult(
+        latitude: picked.latitude,
+        longitude: picked.longitude,
+      );
+      if (picked.address.isNotEmpty) _addressController.text = picked.address;
     });
-    try {
-      final location = await _locationService.getCurrentLocation();
-      if (!mounted) return;
-      setState(() {
-        _location = location;
-        _isLocating = false;
-      });
-    } on LocationException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _locationError = error.message;
-        _isLocating = false;
-      });
-    }
   }
 
   void _showMessage(String message) {
@@ -260,10 +267,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 isResolvingStore: _isResolvingContext,
                 storeError: _contextError,
                 onRetryStore: _resolveVendorContext,
-                isLocating: _isLocating,
                 location: _location,
-                locationError: _locationError,
-                onDetectLocation: _detectLocation,
+                onPickLocation: _openLocationPicker,
                 addressController: _addressController,
                 onAddressChanged: () => setState(() {}),
               ),
@@ -387,18 +392,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 }
 
 /// Real delivery-location capture — no fabricated address anywhere in this
-/// block. Shows store-resolution status, then a "Detect my location"
-/// action backed by real device GPS, then a required free-text field for
-/// the address/landmark the customer actually types (this becomes
-/// `p_delivery_address`).
+/// block. Shows store-resolution status, then a map picker
+/// ([LocationPickerScreen]) that yields a real coordinate + address, then a
+/// mini OSM preview of the chosen point and a still-editable
+/// address/landmark field (this text becomes `p_delivery_address`; the
+/// coordinate becomes `customer_lat`/`customer_lng`).
 class _DeliveryLocationBlock extends StatelessWidget {
   final bool isResolvingStore;
   final String? storeError;
   final VoidCallback onRetryStore;
-  final bool isLocating;
   final LocationResult? location;
-  final String? locationError;
-  final VoidCallback onDetectLocation;
+  final VoidCallback onPickLocation;
   final TextEditingController addressController;
   final VoidCallback onAddressChanged;
 
@@ -406,10 +410,8 @@ class _DeliveryLocationBlock extends StatelessWidget {
     required this.isResolvingStore,
     required this.storeError,
     required this.onRetryStore,
-    required this.isLocating,
     required this.location,
-    required this.locationError,
-    required this.onDetectLocation,
+    required this.onPickLocation,
     required this.addressController,
     required this.onAddressChanged,
   });
@@ -451,36 +453,33 @@ class _DeliveryLocationBlock extends StatelessWidget {
       children: [
         if (location == null)
           OutlinedButton.icon(
-            onPressed: isLocating ? null : onDetectLocation,
-            icon: isLocating
-                ? const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.my_location_rounded, size: 16),
-            label: Text(isLocating ? 'Detecting…' : 'Detect my location'),
+            onPressed: onPickLocation,
+            icon: const Icon(Icons.map_outlined, size: 16),
+            label: const Text('Set delivery location on map'),
           )
-        else
+        else ...[
+          StaticLocationMap(
+            point: LatLng(location!.latitude, location!.longitude),
+            height: 140,
+          ),
+          const SizedBox(height: 6),
           Row(
             children: [
-              const Icon(Icons.check_circle_rounded, size: 18, color: Color(0xFF2E7D32)),
+              const Icon(Icons.check_circle_rounded, size: 16, color: Color(0xFF2E7D32)),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'Location detected (${location!.latitude.toStringAsFixed(4)}, '
-                  '${location!.longitude.toStringAsFixed(4)})',
+                  '${location!.latitude.toStringAsFixed(5)}, '
+                  '${location!.longitude.toStringAsFixed(5)}',
                   style: theme.textTheme.bodySmall,
                 ),
               ),
-              TextButton(onPressed: onDetectLocation, child: const Text('Re-detect')),
+              TextButton.icon(
+                onPressed: onPickLocation,
+                icon: const Icon(Icons.edit_location_alt_outlined, size: 16),
+                label: const Text('Change'),
+              ),
             ],
-          ),
-        if (locationError != null) ...[
-          const SizedBox(height: 4),
-          Text(
-            locationError!,
-            style: TextStyle(color: theme.colorScheme.error, fontSize: 12),
           ),
         ],
         const SizedBox(height: 10),

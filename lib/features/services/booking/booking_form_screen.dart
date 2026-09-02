@@ -4,7 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../core/location/location_service.dart';
+import 'package:latlong2/latlong.dart';
+
+import '../../../core/map/location_picker_screen.dart';
+import '../../../core/map/osm_map.dart';
+import '../../../core/map/picked_location.dart';
 import '../data/services_booking_repository.dart';
 import '../models/recurring_service_plan.dart';
 import '../models/service.dart';
@@ -31,14 +35,12 @@ class BookingFormScreen extends StatefulWidget {
 
 class _BookingFormScreenState extends State<BookingFormScreen> {
   final _repo = ServicesBookingRepository(Supabase.instance.client);
-  final _locationService = LocationService();
   final _addressController = TextEditingController();
   final _notesController = TextEditingController();
 
+  /// Set only from the map picker — a real confirmed coordinate.
   double? _lat;
   double? _lng;
-  bool _isDetectingLocation = false;
-  String? _locationError;
 
   DateTime? _preferredDate;
   String _timeSlot = 'morning';
@@ -52,38 +54,32 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   String? _submitError;
 
   @override
-  void initState() {
-    super.initState();
-    _detectLocation();
-  }
-
-  @override
   void dispose() {
     _addressController.dispose();
     _notesController.dispose();
     super.dispose();
   }
 
-  Future<void> _detectLocation() async {
+  Future<void> _openLocationPicker() async {
+    final picked = await Navigator.of(context).push<PickedLocation>(
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initial: (_lat == null || _lng == null)
+              ? null
+              : PickedLocation(
+                  latitude: _lat!,
+                  longitude: _lng!,
+                  address: _addressController.text.trim(),
+                ),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
     setState(() {
-      _isDetectingLocation = true;
-      _locationError = null;
+      _lat = picked.latitude;
+      _lng = picked.longitude;
+      if (picked.address.isNotEmpty) _addressController.text = picked.address;
     });
-    try {
-      final result = await _locationService.getCurrentLocation();
-      if (!mounted) return;
-      setState(() {
-        _lat = result.latitude;
-        _lng = result.longitude;
-        _isDetectingLocation = false;
-      });
-    } on LocationException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _locationError = error.message;
-        _isDetectingLocation = false;
-      });
-    }
   }
 
   Future<void> _pickDate() async {
@@ -280,24 +276,29 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
             decoration: const InputDecoration(border: OutlineInputBorder(), hintText: 'House no., street, area, landmark'),
           ),
           const SizedBox(height: 8),
-          if (_isDetectingLocation)
-            const Row(children: [
-              SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-              SizedBox(width: 8),
-              Text('Detecting your location...'),
-            ])
-          else if (_locationError != null)
-            Row(children: [
-              Expanded(child: Text(_locationError!, style: const TextStyle(color: Colors.red))),
-              TextButton(onPressed: _detectLocation, child: const Text('Retry')),
-            ])
-          else if (_lat != null)
+          if (_lat == null || _lng == null)
+            OutlinedButton.icon(
+              onPressed: _openLocationPicker,
+              icon: const Icon(Icons.map_outlined, size: 18),
+              label: const Text('Set service location on map'),
+            )
+          else ...[
+            StaticLocationMap(point: LatLng(_lat!, _lng!), height: 140),
+            const SizedBox(height: 6),
             Row(children: [
               const Icon(Icons.check_circle, size: 16, color: Colors.green),
               const SizedBox(width: 6),
-              Text('Location captured (${_lat!.toStringAsFixed(4)}, ${_lng!.toStringAsFixed(4)})',
-                  style: const TextStyle(color: Colors.green, fontSize: 12)),
+              Expanded(
+                child: Text('${_lat!.toStringAsFixed(5)}, ${_lng!.toStringAsFixed(5)}',
+                    style: const TextStyle(color: Colors.green, fontSize: 12)),
+              ),
+              TextButton.icon(
+                onPressed: _openLocationPicker,
+                icon: const Icon(Icons.edit_location_alt_outlined, size: 16),
+                label: const Text('Change'),
+              ),
             ]),
+          ],
 
           const SizedBox(height: 24),
           const Text('Preferred Date', style: TextStyle(fontWeight: FontWeight.w700)),
