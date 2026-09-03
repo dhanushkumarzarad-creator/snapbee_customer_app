@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -66,6 +68,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   LocationResult? _location;
 
   bool _isPlacingOrder = false;
+
+  /// One key per checkout screen visit — reused across any retry of THIS
+  /// attempt (e.g. a network failure that resets [_isPlacingOrder] and
+  /// lets the customer tap Place Order again), so a retry can never create
+  /// a second real order. A genuinely new attempt gets a fresh key because
+  /// it gets a fresh screen. Dependency-free: this app has no uuid package
+  /// and doesn't need real UUID formatting, only a unique opaque token.
+  final String _idempotencyKey = List<int>.generate(
+    16,
+    (_) => Random.secure().nextInt(256),
+  ).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
 
   @override
   void initState() {
@@ -176,6 +189,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         customerLng: location.longitude,
         deliveryAddress: _addressController.text.trim(),
         isCod: _selectedMethod == _PaymentMethod.cod,
+        idempotencyKey: _idempotencyKey,
       );
       CartStore.instance.clear();
       if (!mounted) return;

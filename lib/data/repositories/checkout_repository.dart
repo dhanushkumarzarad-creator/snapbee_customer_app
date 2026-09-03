@@ -114,6 +114,15 @@ class CheckoutRepository {
     required double customerLng,
     required String deliveryAddress,
     bool isCod = false,
+    // Reuse the SAME key across a retry of the same checkout attempt (e.g.
+    // CheckoutScreen holding one key for its whole lifetime) so a network
+    // retry or a stray duplicate request can never create two real orders
+    // — place_customer_order (snapbee_admin/supabase/
+    // daily_essentials_order_idempotency.sql) returns the original order
+    // instead of creating a second one when the same (customer, key) pair
+    // is seen again. Optional and additive: omitting it places the order
+    // exactly as before, with no replay protection.
+    String? idempotencyKey,
   }) async {
     if (items.isEmpty) {
       throw const CheckoutException('Your cart is empty.');
@@ -139,6 +148,7 @@ class CheckoutRepository {
           'p_customer_lng': customerLng,
           'p_delivery_address': deliveryAddress,
           'p_payment_method': isCod ? 'cod' : 'prepaid',
+          'p_idempotency_key': idempotencyKey,
         },
       );
 

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'core/config/env_config.dart';
 import 'core/constants/app_colors.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/main_screen.dart';
@@ -7,9 +9,11 @@ import 'screens/main_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  await dotenv.load(fileName: '.env');
+
   await Supabase.initialize(
-    url: 'https://zhdhkvoxkdmsuiyehgsw.supabase.co',
-    publishableKey: 'sb_publishable_6CT-UQ0hog6b4Y9oOEljSw_LMH3V3D5',
+    url: EnvConfig.supabaseUrl,
+    publishableKey: EnvConfig.supabaseAnonKey,
   );
 
   runApp(const SnapBeeApp());
