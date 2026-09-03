@@ -58,6 +58,7 @@ class ServicesBookingRepository {
     String? customerNotes,
     bool isEmergency = false,
     List<String>? emergencyProblemMedia,
+    String? idempotencyKey,
   }) async {
     if (_client.auth.currentSession == null) {
       throw const ServicesException('Your session has expired. Please sign in again.');
@@ -75,6 +76,7 @@ class ServicesBookingRepository {
         'p_customer_notes': customerNotes,
         'p_is_emergency': isEmergency,
         'p_emergency_problem_media': emergencyProblemMedia,
+        'p_idempotency_key': idempotencyKey,
       });
       if (bookingId == null || (bookingId as String).isEmpty) {
         throw const ServicesException('Could not create your booking. Please try again.');

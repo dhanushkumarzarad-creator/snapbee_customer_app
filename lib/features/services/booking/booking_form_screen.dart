@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -52,6 +53,15 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   bool _isUploadingPhoto = false;
   bool _isSubmitting = false;
   String? _submitError;
+
+  /// One key per screen instance, reused across any retry of THIS booking
+  /// attempt — same pattern as checkout_screen.dart's _idempotencyKey (see
+  /// its comment for the full rationale). A genuinely new booking attempt
+  /// gets a fresh key because it gets a fresh screen.
+  final String _idempotencyKey = List<int>.generate(
+    16,
+    (_) => Random.secure().nextInt(256),
+  ).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
 
   @override
   void dispose() {
@@ -173,6 +183,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
         isEmergency: _isEmergency,
         emergencyProblemMedia: mediaUrls,
         customerNotes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+        idempotencyKey: _idempotencyKey,
       );
       if (_isRecurring && !_isEmergency) {
         try {
