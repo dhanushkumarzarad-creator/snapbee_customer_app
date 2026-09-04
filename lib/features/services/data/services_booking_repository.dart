@@ -59,6 +59,7 @@ class ServicesBookingRepository {
     bool isEmergency = false,
     List<String>? emergencyProblemMedia,
     String? idempotencyKey,
+    String? vendorId,
   }) async {
     if (_client.auth.currentSession == null) {
       throw const ServicesException('Your session has expired. Please sign in again.');
@@ -73,6 +74,12 @@ class ServicesBookingRepository {
         'p_preferred_time_slot': preferredTimeSlot,
         'p_booking_type': bookingType,
         'p_location_type': locationType,
+        // The provider the customer chose via the Service Method card (NEW
+        // Master Method architecture). `create_service_booking` already
+        // accepts p_vendor_id — this routes the booking to that provider
+        // instead of leaving it to auto-match. The exact method/config link
+        // (p_vendor_method_config_id) is still Phase 7 backend work.
+        'p_vendor_id': vendorId,
         'p_customer_notes': customerNotes,
         'p_is_emergency': isEmergency,
         'p_emergency_problem_media': emergencyProblemMedia,

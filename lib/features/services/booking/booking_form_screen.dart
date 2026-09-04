@@ -13,7 +13,9 @@ import '../../../core/map/picked_location.dart';
 import '../data/services_booking_repository.dart';
 import '../models/recurring_service_plan.dart';
 import '../models/service.dart';
+import '../models/service_method.dart';
 import '../service_records/my_bookings_screen.dart';
+import '../theme/service_colors.dart';
 
 /// Standard + emergency booking creation. Inspection-required services are
 /// booked exactly like a standard service — `create_service_booking`
@@ -25,10 +27,19 @@ import '../service_records/my_bookings_screen.dart';
 /// `recurring_service_plans` row (weekly/biweekly/monthly/quarterly) whose
 /// due bookings Services Admin generates; AMC and scheduled/ASAP booking
 /// types are still not surfaced here.
+///
+/// [method] is the delivery method the customer chose on the service detail
+/// screen (NEW Services Master Method architecture). It is shown back to the
+/// customer as a summary here. NOTE: `create_service_booking` does not yet
+/// accept a method / config id, so this selection is currently advisory —
+/// it is recorded on the booking as a customer note. Routing the booking to
+/// that exact provider+method is Phase 7 backend work (a
+/// `p_vendor_method_config_id` parameter on the RPC).
 class BookingFormScreen extends StatefulWidget {
   final ServiceRow service;
+  final ServiceMethodRow? method;
 
-  const BookingFormScreen({super.key, required this.service});
+  const BookingFormScreen({super.key, required this.service, this.method});
 
   @override
   State<BookingFormScreen> createState() => _BookingFormScreenState();
@@ -182,8 +193,9 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
         bookingType: _isEmergency ? 'emergency' : 'one_time',
         isEmergency: _isEmergency,
         emergencyProblemMedia: mediaUrls,
-        customerNotes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+        customerNotes: _composeNotes(),
         idempotencyKey: _idempotencyKey,
+        vendorId: widget.method?.vendorId,
       );
       if (_isRecurring && !_isEmergency) {
         try {
@@ -226,6 +238,18 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     }
   }
 
+  /// Until `create_service_booking` accepts a method/config id (Phase 7),
+  /// the chosen delivery method + provider are recorded on the booking as a
+  /// customer note so the provider and Services Admin can see the customer's
+  /// intent. The customer's own typed note (if any) is kept below it.
+  String? _composeNotes() {
+    final typed = _notesController.text.trim();
+    final method = widget.method;
+    if (method == null) return typed.isEmpty ? null : typed;
+    final line = 'Requested delivery method: ${method.methodName} — ${method.vendorName}';
+    return typed.isEmpty ? line : '$line\n$typed';
+  }
+
   static const _recurringOptions = [
     ('weekly', 'Every week'),
     ('biweekly', 'Every 2 weeks'),
@@ -241,6 +265,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final method = widget.method;
     return Scaffold(
       appBar: AppBar(title: const Text('Book Service')),
       body: ListView(
@@ -248,6 +273,12 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
         children: [
           Text(widget.service.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           Text('₹${widget.service.basePrice.toStringAsFixed(0)}', style: const TextStyle(color: Colors.grey)),
+
+          if (method != null) ...[
+            const SizedBox(height: 16),
+            _SelectedMethodBanner(method: method),
+          ],
+
           const SizedBox(height: 24),
 
           if (widget.service.supportsEmergency) ...[
@@ -373,6 +404,81 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
                   : const Text('Confirm Booking'),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Read-only summary of the delivery method the customer picked on the
+/// previous screen. Shows customer-facing information only — name, icon,
+/// short definition, price / travel charge, duration, booking requirements.
+class _SelectedMethodBanner extends StatelessWidget {
+  final ServiceMethodRow method;
+
+  const _SelectedMethodBanner({required this.method});
+
+  static const Map<String, IconData> _iconByCode = {
+    'store_pickup': Icons.storefront_outlined,
+    'store_delivery': Icons.local_shipping_outlined,
+    'appointment_booking': Icons.event_available_outlined,
+    'home_visit': Icons.home_outlined,
+    'instant_on_demand': Icons.bolt_outlined,
+    'pickup_and_drop': Icons.sync_alt_outlined,
+    'multi_step_workflow': Icons.account_tree_outlined,
+    'subscription': Icons.autorenew_outlined,
+    'lead_generation': Icons.contact_phone_outlined,
+    'hybrid': Icons.dashboard_customize_outlined,
+    'walk_in': Icons.directions_walk_outlined,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: ServiceColors.primaryBlueLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: ServiceColors.primaryBlue.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(_iconByCode[method.methodCode] ?? Icons.build_outlined, size: 18, color: ServiceColors.primaryBlue),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  method.methodName,
+                  style: const TextStyle(fontWeight: FontWeight.w700, color: ServiceColors.textPrimary),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text('with ${method.vendorName}',
+              style: const TextStyle(fontSize: 12, color: ServiceColors.textSecondary)),
+          if (method.definition.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(method.definition, style: const TextStyle(fontSize: 12.5, height: 1.35)),
+          ],
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 14,
+            runSpacing: 4,
+            children: [
+              if (method.priceLabel != null)
+                Text(method.priceLabel!, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              if (method.durationLabel != null)
+                Text('~ ${method.durationLabel!}', style: const TextStyle(fontSize: 12, color: ServiceColors.textSecondary)),
+            ],
+          ),
+          if (method.hasBookingRequirements) ...[
+            const SizedBox(height: 8),
+            Text('Before booking: ${method.bookingRequirementsText}',
+                style: const TextStyle(fontSize: 11.5, color: ServiceColors.textSecondary, height: 1.3)),
+          ],
         ],
       ),
     );

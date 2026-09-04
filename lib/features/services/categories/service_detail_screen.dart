@@ -4,8 +4,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../booking/booking_form_screen.dart';
 import '../data/services_catalog_repository.dart';
 import '../models/service.dart';
+import '../models/service_method.dart';
 import '../models/service_review.dart';
 import '../models/service_vendor.dart';
+import '../models/vendor_method_group.dart';
+import '../theme/service_colors.dart';
+import 'vendor_profile_screen.dart';
+import 'widgets/service_method_card.dart';
 
 class ServiceDetailScreen extends StatefulWidget {
   final ServiceRow service;
@@ -19,14 +24,34 @@ class ServiceDetailScreen extends StatefulWidget {
 class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   final _repo = ServicesCatalogRepository(Supabase.instance.client);
   bool _isLoadingProviders = true;
+  bool _isLoadingMethods = true;
   List<ServiceVendorListing> _providers = const [];
+  List<ServiceMethodRow> _methods = const [];
   List<ServiceReview> _reviews = const [];
 
   @override
   void initState() {
     super.initState();
+    _loadMethods();
     _loadProviders();
     _loadReviews();
+  }
+
+  /// NEW Services Master Method architecture — the primary "how do I book
+  /// this" surface. When at least one provider has a live, in-coverage
+  /// method configured, the per-method cards (grouped by provider) replace
+  /// the legacy flat provider list. Until then (most services, mid-
+  /// migration) this is simply empty and the legacy list stays.
+  Future<void> _loadMethods() async {
+    final methods = await _repo.fetchServiceMethods(
+      serviceId: widget.service.id,
+      categoryId: widget.service.categoryId,
+    );
+    if (!mounted) return;
+    setState(() {
+      _methods = methods;
+      _isLoadingMethods = false;
+    });
   }
 
   Future<void> _loadProviders() async {
@@ -44,9 +69,33 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     setState(() => _reviews = reviews);
   }
 
+  void _bookWithMethod(ServiceMethodRow method) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => BookingFormScreen(service: widget.service, method: method)),
+    );
+  }
+
+  void _openVendorProfile(VendorMethodGroup group) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => VendorProfileScreen(
+          vendorId: group.vendorId,
+          vendorName: group.vendorName,
+          ratingAvg: group.ratingAvg,
+          ratingCount: group.ratingCount,
+          categoryId: widget.service.categoryId,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final service = widget.service;
+    final hasMethods = _methods.isNotEmpty;
+
     return Scaffold(
       appBar: AppBar(title: Text(service.name)),
       body: ListView(
@@ -107,34 +156,49 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           Text('At least ${service.minAdvancePercent.toStringAsFixed(0)}% advance required before work starts',
               style: const TextStyle(color: Colors.grey, fontSize: 12.5)),
           const SizedBox(height: 16),
-          if (!_isLoadingProviders) _AvailabilitySection(providers: _providers),
-          const SizedBox(height: 24),
-          const Text('Verified Providers', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-          const SizedBox(height: 10),
-          if (_isLoadingProviders)
+
+          // --- NEW: per-provider bookable methods (Master Method architecture) ---
+          if (_isLoadingMethods)
             const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()))
-          else if (_providers.isEmpty)
-            const Text('A verified provider will be matched to your booking automatically.',
-                style: TextStyle(color: Colors.grey, fontSize: 12.5))
-          else
-            for (final provider in _providers)
-              Card(
-                margin: const EdgeInsets.only(bottom: 8),
-                child: ListTile(
-                  leading: const CircleAvatar(child: Icon(Icons.verified, color: Colors.green)),
-                  title: Text(provider.businessName, style: const TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Row(
-                    children: [
-                      const Icon(Icons.star, size: 14, color: Colors.amber),
-                      const SizedBox(width: 2),
-                      Text('${provider.ratingAvg.toStringAsFixed(1)} (${provider.ratingCount})'),
-                      const SizedBox(width: 10),
-                      Text(provider.businessType, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                    ],
+          else if (hasMethods)
+            _MethodsSection(
+              groups: groupMethodsByVendor(_methods),
+              onBook: _bookWithMethod,
+              onViewProvider: _openVendorProfile,
+            ),
+
+          // --- Legacy flat provider list — only while no method is configured ---
+          if (!hasMethods) ...[
+            if (!_isLoadingProviders) _AvailabilitySection(providers: _providers),
+            const SizedBox(height: 24),
+            const Text('Verified Providers', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            const SizedBox(height: 10),
+            if (_isLoadingProviders)
+              const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()))
+            else if (_providers.isEmpty)
+              const Text('A verified provider will be matched to your booking automatically.',
+                  style: TextStyle(color: Colors.grey, fontSize: 12.5))
+            else
+              for (final provider in _providers)
+                Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    leading: const CircleAvatar(child: Icon(Icons.verified, color: Colors.green)),
+                    title: Text(provider.businessName, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Row(
+                      children: [
+                        const Icon(Icons.star, size: 14, color: Colors.amber),
+                        const SizedBox(width: 2),
+                        Text('${provider.ratingAvg.toStringAsFixed(1)} (${provider.ratingCount})'),
+                        const SizedBox(width: 10),
+                        Text(provider.businessType, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                      ],
+                    ),
+                    trailing: Text('₹${provider.price.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w700)),
                   ),
-                  trailing: Text('₹${provider.price.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w700)),
                 ),
-              ),
+          ],
+
           if (_reviews.isNotEmpty) ...[
             const SizedBox(height: 24),
             const Text('Customer Reviews', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
@@ -143,14 +207,18 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           ],
 
           const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => BookingFormScreen(service: service))),
-              child: const Text('Book Now'),
+          // A generic "Book Now" only makes sense when there is no explicit
+          // method to choose; once methods exist the customer books by
+          // tapping a specific method card above.
+          if (!hasMethods)
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => BookingFormScreen(service: service))),
+                child: const Text('Book Now'),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -173,6 +241,75 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   final totalCount = rated.fold<int>(0, (sum, p) => sum + p.ratingCount);
   final weightedSum = rated.fold<double>(0, (sum, p) => sum + p.ratingAvg * p.ratingCount);
   return (average: weightedSum / totalCount, totalCount: totalCount);
+}
+
+/// "Choose how to book" — the per-provider grouped list of bookable
+/// delivery methods. Each provider is a small header (name + rating + how
+/// many options), then its method cards. Providers with at least one
+/// available method are ordered first (see [groupMethodsByVendor]).
+class _MethodsSection extends StatelessWidget {
+  final List<VendorMethodGroup> groups;
+  final void Function(ServiceMethodRow) onBook;
+  final void Function(VendorMethodGroup) onViewProvider;
+
+  const _MethodsSection({
+    required this.groups,
+    required this.onBook,
+    required this.onViewProvider,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Choose how to book', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+        const SizedBox(height: 4),
+        const Text(
+          'Each provider offers this service in one or more ways. Pick the one that suits you.',
+          style: TextStyle(fontSize: 12.5, color: ServiceColors.textSecondary),
+        ),
+        const SizedBox(height: 12),
+        for (final group in groups) ...[
+          InkWell(
+            onTap: () => onViewProvider(group),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  const Icon(Icons.verified, size: 16, color: ServiceColors.accentGreen),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      group.vendorName,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: ServiceColors.textPrimary),
+                    ),
+                  ),
+                  if (group.ratingCount > 0) ...[
+                    const Icon(Icons.star, size: 13, color: ServiceColors.ratingStar),
+                    const SizedBox(width: 2),
+                    Text(
+                      '${group.ratingAvg.toStringAsFixed(1)} (${group.ratingCount})',
+                      style: const TextStyle(fontSize: 11.5, color: ServiceColors.textSecondary),
+                    ),
+                  ],
+                  const SizedBox(width: 4),
+                  const Icon(Icons.chevron_right, size: 16, color: ServiceColors.textSecondary),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (final method in group.methods)
+            ServiceMethodCard(
+              method: method,
+              onBook: method.isAvailable ? () => onBook(method) : null,
+            ),
+          const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
 }
 
 class _RatingSummary extends StatelessWidget {

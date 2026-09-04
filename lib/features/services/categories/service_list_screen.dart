@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data/services_catalog_repository.dart';
 import '../models/service.dart';
 import '../models/service_category.dart';
+import '../models/service_subcategory.dart';
 import '../theme/service_colors.dart';
 import 'service_detail_screen.dart';
 
@@ -55,7 +56,12 @@ List<ServiceRow> filterAndSortServices(
 class ServiceListScreen extends StatefulWidget {
   final ServiceCategoryRow category;
 
-  const ServiceListScreen({super.key, required this.category});
+  /// When set, only services in this subcategory are listed
+  /// (Category -> Subcategory -> Service). Null = every service in the
+  /// category (categories with no subcategories, or an explicit "All").
+  final ServiceSubcategoryRow? subcategory;
+
+  const ServiceListScreen({super.key, required this.category, this.subcategory});
 
   @override
   State<ServiceListScreen> createState() => _ServiceListScreenState();
@@ -75,7 +81,10 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   }
 
   Future<void> _load() async {
-    final services = await _repo.fetchServices(widget.category.id);
+    final services = await _repo.fetchServices(
+      widget.category.id,
+      subcategoryId: widget.subcategory?.id,
+    );
     if (!mounted) return;
     setState(() {
       _services = services;
@@ -96,7 +105,8 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         iconTheme: const IconThemeData(color: ServiceColors.textPrimary),
-        title: Text(widget.category.name, style: const TextStyle(color: ServiceColors.textPrimary, fontWeight: FontWeight.bold)),
+        title: Text(widget.subcategory?.name ?? widget.category.name,
+            style: const TextStyle(color: ServiceColors.textPrimary, fontWeight: FontWeight.bold)),
       ),
       body: Column(
         children: [

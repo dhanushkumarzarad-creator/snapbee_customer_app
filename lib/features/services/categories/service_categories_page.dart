@@ -5,6 +5,7 @@ import '../data/services_catalog_repository.dart';
 import '../models/service_category.dart';
 import '../theme/service_colors.dart';
 import 'service_list_screen.dart';
+import 'service_subcategory_list_screen.dart';
 
 /// Dedicated Services Category page (section 3 of the Services spec) — a
 /// bottom-nav destination in its own right, not just the compact rail
@@ -49,6 +50,28 @@ class _ServiceCategoriesPageState extends State<ServiceCategoriesPage> {
       _categories = categories;
       _isLoading = false;
     });
+  }
+
+  bool _openingCategory = false;
+
+  /// Category tap: if the category has active subcategories, go through the
+  /// Subcategory level first (Category -> Subcategory -> Service);
+  /// otherwise straight to the service list. A brief guard prevents a
+  /// double-push while the subcategory lookup is in flight.
+  Future<void> _openCategory(ServiceCategoryRow category) async {
+    if (_openingCategory) return;
+    setState(() => _openingCategory = true);
+    final subcategories = await _repo.fetchSubcategories(category.id);
+    if (!mounted) return;
+    setState(() => _openingCategory = false);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => subcategories.isEmpty
+            ? ServiceListScreen(category: category)
+            : ServiceSubcategoryListScreen(category: category, subcategories: subcategories),
+      ),
+    );
   }
 
   @override
@@ -114,7 +137,7 @@ class _ServiceCategoriesPageState extends State<ServiceCategoriesPage> {
                               return _CategoryCard(
                                 category: category,
                                 icon: _iconByName[category.iconName ?? ''] ?? Icons.build_outlined,
-                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceListScreen(category: category))),
+                                onTap: () => _openCategory(category),
                               );
                             },
                           ),
