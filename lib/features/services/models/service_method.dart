@@ -70,9 +70,9 @@ extension MethodUnavailableReasonLabel on MethodUnavailableReason {
 }
 
 class ServiceMethodRow {
-  /// `service_vendor_method_configs.id` — the slot a booking would be made
-  /// against once `create_service_booking` opts into the method system
-  /// (Phase 7 — it does not yet accept a config id).
+  /// `service_vendor_method_configs.id` — passed to `create_service_booking`
+  /// as `p_vendor_method_config_id`, which re-validates it server-side and
+  /// links the resulting booking to this exact live method configuration.
   final String configId;
   final String vendorId;
   final String vendorName;

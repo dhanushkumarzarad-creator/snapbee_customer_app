@@ -30,11 +30,12 @@ import '../theme/service_colors.dart';
 ///
 /// [method] is the delivery method the customer chose on the service detail
 /// screen (NEW Services Master Method architecture). It is shown back to the
-/// customer as a summary here. NOTE: `create_service_booking` does not yet
-/// accept a method / config id, so this selection is currently advisory —
-/// it is recorded on the booking as a customer note. Routing the booking to
-/// that exact provider+method is Phase 7 backend work (a
-/// `p_vendor_method_config_id` parameter on the RPC).
+/// customer as a summary here and its `configId` is passed to
+/// `create_service_booking` as `p_vendor_method_config_id`, which the RPC
+/// re-validates server-side (live status, service match, method radius,
+/// closed/holiday) and links to the booking; the per-config day capacity is
+/// then enforced concurrency-safe by a trigger. The method name + provider
+/// are also kept in the customer note for the provider's context.
 class BookingFormScreen extends StatefulWidget {
   final ServiceRow service;
   final ServiceMethodRow? method;
@@ -196,6 +197,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
         customerNotes: _composeNotes(),
         idempotencyKey: _idempotencyKey,
         vendorId: widget.method?.vendorId,
+        vendorMethodConfigId: widget.method?.configId,
       );
       if (_isRecurring && !_isEmergency) {
         try {
@@ -238,10 +240,10 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     }
   }
 
-  /// Until `create_service_booking` accepts a method/config id (Phase 7),
-  /// the chosen delivery method + provider are recorded on the booking as a
-  /// customer note so the provider and Services Admin can see the customer's
-  /// intent. The customer's own typed note (if any) is kept below it.
+  /// The chosen method is linked structurally via
+  /// `p_vendor_method_config_id`; this additionally records the method +
+  /// provider name in the free-text note so the provider and Services Admin
+  /// see it at a glance. The customer's own typed note (if any) follows it.
   String? _composeNotes() {
     final typed = _notesController.text.trim();
     final method = widget.method;

@@ -60,6 +60,7 @@ class ServicesBookingRepository {
     List<String>? emergencyProblemMedia,
     String? idempotencyKey,
     String? vendorId,
+    String? vendorMethodConfigId,
   }) async {
     if (_client.auth.currentSession == null) {
       throw const ServicesException('Your session has expired. Please sign in again.');
@@ -75,11 +76,14 @@ class ServicesBookingRepository {
         'p_booking_type': bookingType,
         'p_location_type': locationType,
         // The provider the customer chose via the Service Method card (NEW
-        // Master Method architecture). `create_service_booking` already
-        // accepts p_vendor_id — this routes the booking to that provider
-        // instead of leaving it to auto-match. The exact method/config link
-        // (p_vendor_method_config_id) is still Phase 7 backend work.
+        // Master Method architecture). p_vendor_id routes the booking to
+        // that provider; p_vendor_method_config_id (Phase 7b) links it to
+        // the exact live method configuration, which the RPC re-validates
+        // server-side (live status, service match, method radius,
+        // closed/holiday) and the day-capacity trigger enforces. Both are
+        // null for a plain "Book Now" with no method chosen.
         'p_vendor_id': vendorId,
+        'p_vendor_method_config_id': vendorMethodConfigId,
         'p_customer_notes': customerNotes,
         'p_is_emergency': isEmergency,
         'p_emergency_problem_media': emergencyProblemMedia,
@@ -516,6 +520,29 @@ class ServicesBookingRepository {
     }
     if (message.contains('not currently available')) {
       return 'This service is no longer available. Please choose another.';
+    }
+    // NEW Services Master Method architecture — create_service_booking's
+    // p_vendor_method_config_id validation (services_method_booking_link.sql).
+    if (message.contains('service method was not found') ||
+        message.contains('service method is not available for booking') ||
+        message.contains('service method configuration no longer exists') ||
+        message.contains('service method is no longer available')) {
+      return 'This booking option is no longer available. Please pick another method or provider.';
+    }
+    if (message.contains('service method does not apply to this service')) {
+      return 'That method can\'t be used for this service. Please choose another option.';
+    }
+    if (message.contains('outside the service area for this method')) {
+      return 'This provider doesn\'t cover your location for that method. Try a different method or provider.';
+    }
+    if (message.contains('service method is fully booked')) {
+      return 'This method is fully booked for that day. Please choose another date or provider.';
+    }
+    if (message.contains('provider is temporarily closed') || message.contains('provider is closed on')) {
+      return 'This provider isn\'t taking bookings for that day. Please choose another date.';
+    }
+    if (message.contains('service method is temporarily unavailable')) {
+      return 'This method is temporarily unavailable. Please choose another option.';
     }
     if (message.contains('problem photo/video is mandatory')) {
       return 'Please attach a photo or video of the problem for an emergency booking.';
