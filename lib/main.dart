@@ -14,6 +14,12 @@ Future<void> main() async {
   await Supabase.initialize(
     url: EnvConfig.supabaseUrl,
     publishableKey: EnvConfig.supabaseAnonKey,
+    // APP_ENV was previously read into EnvConfig.appEnv/isProduction but never
+    // consumed anywhere (dead getters) - the SDK own verbose debug logging
+    // otherwise defaults to kDebugMode (a build-mode flag, not our env
+    // config) and would stay noisy if a production-configured .env is ever
+    // run outside a release build (e.g. flutter run against production).
+    debug: !EnvConfig.isProduction,
   );
 
   runApp(const SnapBeeApp());
