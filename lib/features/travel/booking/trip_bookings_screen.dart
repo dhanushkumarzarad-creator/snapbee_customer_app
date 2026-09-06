@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/invoicing/invoice.dart';
+import '../../../core/invoicing/invoice_button.dart';
 import '../data/travel_repository.dart';
 import '../theme/travel_colors.dart';
 
@@ -57,14 +59,21 @@ class _TripBookingsScreenState extends State<TripBookingsScreen> {
                       Text('${b['pickup_location']} → ${b['destination_location']}'),
                       Text('$typeName · ${b['start_date']} → ${b['end_date']}'),
                       Text('Total: ₹${b['total_amount']}', style: const TextStyle(fontWeight: FontWeight.w600)),
-                      if (status == 'confirmed' || status == 'driver_assigned')
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: TextButton(
-                            onPressed: () => _cancel(b['id'] as String),
-                            child: const Text('Cancel', style: TextStyle(color: Colors.red)),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          InvoiceActionButton(
+                            vertical: InvoiceVertical.travelTrip,
+                            sourceId: b['id'] as String,
                           ),
-                        ),
+                          if (status == 'confirmed' || status == 'driver_assigned')
+                            TextButton(
+                              onPressed: () => _cancel(b['id'] as String),
+                              child: const Text('Cancel', style: TextStyle(color: Colors.red)),
+                            ),
+                        ],
+                      ),
                     ],
                   ),
                 ),

@@ -5,6 +5,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/invoicing/invoice.dart';
+import '../../core/invoicing/invoice_button.dart';
 import '../../core/map/osm_map.dart';
 import '../../data/repositories/live_tracking_repository.dart';
 import '../../data/repositories/order_repository.dart';
@@ -435,6 +437,11 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                 ],
               ),
             ),
+            if (order.isReal)
+              InvoiceActionTile(
+                vertical: InvoiceVertical.dailyEssentials,
+                sourceId: order.orderId,
+              ),
             if (_canCancel)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),

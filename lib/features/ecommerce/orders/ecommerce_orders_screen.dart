@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/invoicing/invoice.dart';
+import '../../../core/invoicing/invoice_button.dart';
 import '../data/ecommerce_repository.dart';
 import '../theme/ecommerce_colors.dart';
 
@@ -57,6 +59,13 @@ class _EcommerceOrdersScreenState extends State<EcommerceOrdersScreen> {
                       const SizedBox(height: 4),
                       ...items.map((it) => Text('${it['product_name']}${it['variant_label'] != null ? ' (${it['variant_label']})' : ''} x${it['quantity']}')),
                       Text('Total: ₹${o['total_amount']}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: InvoiceActionButton(
+                          vertical: InvoiceVertical.ecommerce,
+                          sourceId: o['id'] as String,
+                        ),
+                      ),
                       if (status == 'pending_payment' || status == 'confirmed' || status == 'packed')
                         Align(
                           alignment: Alignment.centerRight,

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/invoicing/invoice.dart';
+import '../../../core/invoicing/invoice_button.dart';
 import '../chat/service_chat_screen.dart';
 import '../complaints/complaint_form_sheet.dart';
 import '../data/services_booking_repository.dart';
@@ -406,6 +408,16 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
             if (_invoice != null) ...[
               const SizedBox(height: 16),
               _InvoiceCard(invoice: _invoice!),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: InvoiceActionButton(
+                  vertical: InvoiceVertical.services,
+                  sourceId: widget.bookingId,
+                  label: 'Invoice PDF · print · share',
+                  dense: false,
+                ),
+              ),
             ],
 
             if (_warranty != null && _warranty!.isActive) ...[

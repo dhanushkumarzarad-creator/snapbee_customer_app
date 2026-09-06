@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/invoicing/invoice.dart';
+import '../../../core/invoicing/invoice_button.dart';
 import '../data/entertainment_repository.dart';
 import '../theme/entertainment_colors.dart';
 
@@ -62,12 +64,11 @@ class _MovieBookingsList extends StatelessWidget {
           itemCount: rows.length,
           itemBuilder: (context, i) {
             final b = rows[i];
-            return Card(
-              child: ListTile(
-                title: Text(b['id'] as String, style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('${b['seat_count']} seat(s) · ₹${b['total_amount']}'),
-                trailing: Chip(label: Text(b['status'] as String)),
-              ),
+            return _BookingCard(
+              id: b['id'] as String,
+              subtitle: '${b['seat_count']} seat(s) · ₹${b['total_amount']}',
+              status: b['status'] as String,
+              vertical: InvoiceVertical.movie,
             );
           },
         );
@@ -94,12 +95,11 @@ class _EventBookingsList extends StatelessWidget {
           itemBuilder: (context, i) {
             final b = rows[i];
             final title = (b['entertainment_events'] as Map?)?['title'] ?? '';
-            return Card(
-              child: ListTile(
-                title: Text(b['id'] as String, style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('$title · ₹${b['total_amount']}'),
-                trailing: Chip(label: Text(b['status'] as String)),
-              ),
+            return _BookingCard(
+              id: b['id'] as String,
+              subtitle: '$title · ₹${b['total_amount']}',
+              status: b['status'] as String,
+              vertical: InvoiceVertical.event,
             );
           },
         );
@@ -126,16 +126,50 @@ class _ParkBookingsList extends StatelessWidget {
           itemBuilder: (context, i) {
             final b = rows[i];
             final name = (b['amusement_parks'] as Map?)?['name'] ?? '';
-            return Card(
-              child: ListTile(
-                title: Text(b['id'] as String, style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('$name · ${b['visit_date']} · ₹${b['total_amount']}'),
-                trailing: Chip(label: Text(b['status'] as String)),
-              ),
+            return _BookingCard(
+              id: b['id'] as String,
+              subtitle: '$name · ${b['visit_date']} · ₹${b['total_amount']}',
+              status: b['status'] as String,
+              vertical: InvoiceVertical.amusementPark,
             );
           },
         );
       },
+    );
+  }
+}
+
+class _BookingCard extends StatelessWidget {
+  final String id;
+  final String subtitle;
+  final String status;
+  final InvoiceVertical vertical;
+  const _BookingCard({
+    required this.id,
+    required this.subtitle,
+    required this.status,
+    required this.vertical,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Column(
+        children: [
+          ListTile(
+            title: Text(id, style: const TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text(subtitle),
+            trailing: Chip(label: Text(status)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: InvoiceActionButton(vertical: vertical, sourceId: id),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

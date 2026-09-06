@@ -50,6 +50,12 @@ dependencies:
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
   http: ^1.2.2
+  # Invoice / bill PDF generation + platform print/share/download.
+  # `pdf` builds the document; `printing` handles layoutPdf (print),
+  # sharePdf (share sheet on mobile, file download on web) and the
+  # in-app PdfPreview. No API key, no network dependency.
+  pdf: ^3.11.1
+  printing: ^5.13.0
 
 dev_dependencies:
   flutter_test:
