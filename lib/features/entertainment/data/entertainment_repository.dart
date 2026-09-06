@@ -112,6 +112,11 @@ class EntertainmentRepository {
     return List<Map<String, dynamic>>.from(rows as List);
   }
 
+  Future<Map<String, dynamic>> cancelEventBooking(String bookingId, {String? reason}) async {
+    final result = await _client.rpc('cancel_event_booking', params: {'p_booking_id': bookingId, 'p_reason': reason});
+    return Map<String, dynamic>.from(result as Map);
+  }
+
   // ---- Amusement parks -----------------------------------------------------------
   Future<List<Map<String, dynamic>>> listActiveParks() async {
     final rows = await _client.from('amusement_parks').select().eq('is_active', true).eq('is_blocked', false);
@@ -143,5 +148,10 @@ class EntertainmentRepository {
   Future<List<Map<String, dynamic>>> myParkBookings() async {
     final rows = await _client.from('amusement_park_bookings').select('*, amusement_parks(name, city)').order('created_at', ascending: false);
     return List<Map<String, dynamic>>.from(rows as List);
+  }
+
+  Future<Map<String, dynamic>> cancelParkBooking(String bookingId, {String? reason}) async {
+    final result = await _client.rpc('cancel_amusement_park_booking', params: {'p_booking_id': bookingId, 'p_reason': reason});
+    return Map<String, dynamic>.from(result as Map);
   }
 }
