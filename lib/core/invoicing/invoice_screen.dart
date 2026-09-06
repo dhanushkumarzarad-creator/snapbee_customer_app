@@ -179,7 +179,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
       ));
     }
     if (children.isEmpty) {
-      children.add(_ActionButton(
+      children.add(const _ActionButton(
         icon: Icons.info_outline_rounded,
         label: 'Sharing not supported on this device',
         onTap: null,
@@ -187,7 +187,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
     }
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 14),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: AppColors.surface,
         border: Border(top: BorderSide(color: AppColors.divider)),
       ),
@@ -254,11 +254,11 @@ class _PreviewSection extends StatelessWidget {
           color: AppColors.cardGrey,
           borderRadius: BorderRadius.circular(14),
         ),
-        child: Row(
+        child: const Row(
           children: [
-            const Icon(Icons.picture_as_pdf_rounded, color: AppColors.primaryOrange),
-            const SizedBox(width: 12),
-            const Expanded(
+            Icon(Icons.picture_as_pdf_rounded, color: AppColors.primaryOrange),
+            SizedBox(width: 12),
+            Expanded(
               child: Text(
                 'A full PDF preview is not available on this platform. '
                 'Use Download or Share below to open the invoice PDF.',

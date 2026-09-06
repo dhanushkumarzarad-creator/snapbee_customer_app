@@ -79,10 +79,10 @@ class InvoicePdf {
       author: 'SnapBee',
     );
 
-    final baseText = pw.TextStyle(color: _ink, fontSize: 9.5);
-    final muted = pw.TextStyle(color: _muted, fontSize: 8.5);
-    final h1 = pw.TextStyle(color: _ink, fontSize: 15, fontWeight: pw.FontWeight.bold);
-    final label = pw.TextStyle(
+    const baseText = pw.TextStyle(color: _ink, fontSize: 9.5);
+    const muted = pw.TextStyle(color: _muted, fontSize: 8.5);
+    const h1 = pw.TextStyle(color: _ink, fontSize: 15, fontWeight: pw.FontWeight.bold);
+    const label = pw.TextStyle(
       color: _muted,
       fontSize: 7.5,
       fontWeight: pw.FontWeight.bold,
@@ -133,7 +133,7 @@ class InvoicePdf {
           pw.SizedBox(height: 18),
           pw.Text(
             'Thank you for using SnapBee.',
-            style: pw.TextStyle(color: _muted, fontSize: 8.5, fontStyle: pw.FontStyle.italic),
+            style: const pw.TextStyle(color: _muted, fontSize: 8.5, fontStyle: pw.FontStyle.italic),
           ),
         ],
       ),
@@ -162,7 +162,7 @@ class InvoicePdf {
               decoration: const pw.BoxDecoration(color: _brand),
               child: pw.Text(
                 'SnapBee',
-                style: pw.TextStyle(
+                style: const pw.TextStyle(
                   color: PdfColors.white,
                   fontSize: 16,
                   fontWeight: pw.FontWeight.bold,
