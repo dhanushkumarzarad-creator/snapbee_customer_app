@@ -41,23 +41,29 @@ class InvoiceActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Material(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.divider),
-      ),
-      child: ListTile(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        leading: const CircleAvatar(
-          backgroundColor: AppColors.primaryOrangeLight,
-          child: Icon(Icons.receipt_long_rounded, color: AppColors.primaryOrangeDark),
+        clipBehavior: Clip.antiAlias,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.divider),
+          ),
+          child: ListTile(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            leading: const CircleAvatar(
+              backgroundColor: AppColors.primaryOrangeLight,
+              child: Icon(Icons.receipt_long_rounded, color: AppColors.primaryOrangeDark),
+            ),
+            title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => openInvoice(context, vertical: vertical, sourceId: sourceId),
+          ),
         ),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-        subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-        trailing: const Icon(Icons.chevron_right_rounded),
-        onTap: () => openInvoice(context, vertical: vertical, sourceId: sourceId),
       ),
     );
   }
