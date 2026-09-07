@@ -164,7 +164,12 @@ class _MethodBookingFieldsState extends State<MethodBookingFields> {
   final Map<String, dynamic> _values = {};
 
   String get _code => widget.method.methodCode;
-  Map<String, dynamic> get _svcCfg => widget.method.serviceConfig;
+  /// Vendor's APPROVED method_config takes precedence over the Admin's
+  /// service-level config for any key both set.
+  Map<String, dynamic> get _svcCfg => {
+        ...widget.method.serviceConfig,
+        ...widget.method.vendorMethodConfig,
+      };
 
   void _set(String key, dynamic value) {
     setState(() {

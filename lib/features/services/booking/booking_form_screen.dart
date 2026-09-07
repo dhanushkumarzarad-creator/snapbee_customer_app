@@ -189,14 +189,26 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     return null;
   }
 
+  /// Address string for the booking row (service_bookings.address is
+  /// NOT NULL). For a method that needs no location an empty field is
+  /// fine — we send a short method tag instead of a fake address.
+  String _addressText() {
+    final t = _addressController.text.trim();
+    if (t.isNotEmpty) return t;
+    final m = widget.method;
+    return m == null ? 'N/A' : '(${m.methodName})';
+  }
+
   Future<void> _submit() async {
-    if (_lat == null || _lng == null) {
-      setState(() => _submitError = 'Please share your location to continue.');
-      return;
-    }
-    if (_addressController.text.trim().isEmpty) {
-      setState(() => _submitError = 'Please enter your address.');
-      return;
+    if (_plan.needsServiceAddress) {
+      if (_lat == null || _lng == null) {
+        setState(() => _submitError = 'Please share your location to continue.');
+        return;
+      }
+      if (_addressController.text.trim().isEmpty) {
+        setState(() => _submitError = 'Please enter your address.');
+        return;
+      }
     }
     if (_plan.needsDate && _preferredDate == null) {
       setState(() => _submitError = 'Please choose a preferred date.');
@@ -233,9 +245,9 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
 
       await _repo.createBooking(
         serviceId: widget.service.id,
-        address: _addressController.text.trim(),
-        lat: _lat!,
-        lng: _lng!,
+        address: _addressText(),
+        lat: _lat,
+        lng: _lng,
         preferredDate: _preferredDate ?? DateTime.now(),
         preferredTimeSlot: _timeSlot,
         bookingType: _isEmergency ? 'emergency' : 'one_time',
@@ -251,9 +263,9 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
         try {
           await _repo.createRecurringPlan(
             serviceId: widget.service.id,
-            address: _addressController.text.trim(),
-            lat: _lat!,
-            lng: _lng!,
+            address: _addressText(),
+            lat: _lat ?? 0,
+            lng: _lng ?? 0,
             frequency: _recurringFrequency,
             preferredTimeSlot: _timeSlot,
             nextRunDate: RecurringServicePlan.nextRunAfter(_preferredDate ?? DateTime.now(), _recurringFrequency),
@@ -375,24 +387,25 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
             const SizedBox(height: 16),
           ],
 
+          if (_plan.needsServiceAddress || _addressController.text.isNotEmpty || method != null) ...[
           Text(
-            _plan.needsServiceAddress ? _plan.addressLabel : 'Your location (helps pick the nearest branch)',
+            _plan.needsServiceAddress ? '${_plan.addressLabel} *' : 'Branch / location (optional)',
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
           TextField(
             controller: _addressController,
             maxLines: 2,
-            decoration: const InputDecoration(border: OutlineInputBorder(), hintText: 'House no., street, area, landmark'),
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              border: const OutlineInputBorder(),
+              hintText: _plan.needsServiceAddress
+                  ? 'House no., street, area, landmark'
+                  : 'e.g. the outlet you will visit',
+            ),
           ),
           const SizedBox(height: 8),
-          if (_lat == null || _lng == null)
-            OutlinedButton.icon(
-              onPressed: _openLocationPicker,
-              icon: const Icon(Icons.map_outlined, size: 18),
-              label: const Text('Set location on map'),
-            )
-          else ...[
+          if (_lat != null && _lng != null) ...[
             StaticLocationMap(point: LatLng(_lat!, _lng!), height: 140),
             const SizedBox(height: 6),
             Row(children: [
@@ -408,6 +421,14 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
                 label: const Text('Change'),
               ),
             ]),
+          ] else
+            OutlinedButton.icon(
+              onPressed: _openLocationPicker,
+              icon: const Icon(Icons.map_outlined, size: 18),
+              label: Text(_plan.needsServiceAddress
+                  ? 'Set location on map'
+                  : 'Add a location (optional)'),
+            ),
           ],
 
           if (_plan.needsDate) ...[

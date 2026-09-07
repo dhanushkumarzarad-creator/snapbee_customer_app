@@ -49,8 +49,8 @@ class ServicesBookingRepository {
   Future<String> createBooking({
     required String serviceId,
     required String address,
-    required double lat,
-    required double lng,
+    double? lat,
+    double? lng,
     required DateTime preferredDate,
     required String preferredTimeSlot,
     String bookingType = 'one_time',

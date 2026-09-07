@@ -132,6 +132,11 @@ class ServiceMethodRow {
   /// Position the Admin gave this method in the category/service list.
   final int displayOrder;
 
+  /// The vendor's own APPROVED method-specific settings
+  /// (`service_vendor_method_configs.method_config`) — used to pre-fill /
+  /// display booking fields like the pickup branch or plan frequency.
+  final Map<String, dynamic> vendorMethodConfig;
+
   const ServiceMethodRow({
     required this.configId,
     required this.vendorId,
@@ -167,6 +172,7 @@ class ServiceMethodRow {
     this.configSchema = const [],
     this.serviceConfig = const {},
     this.displayOrder = 999,
+    this.vendorMethodConfig = const {},
   });
 
   MethodAvailability get availability =>
@@ -268,6 +274,9 @@ class ServiceMethodRow {
           ? const {}
           : Map<String, dynamic>.from(json['method_service_config'] as Map),
       displayOrder: (json['method_display_order'] as num?)?.toInt() ?? 999,
+      vendorMethodConfig: json['vendor_method_config'] == null
+          ? const {}
+          : Map<String, dynamic>.from(json['vendor_method_config'] as Map),
     );
   }
 }

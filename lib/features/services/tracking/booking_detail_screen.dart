@@ -168,6 +168,10 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
   Future<void> _startRepeatPlan() async {
     final booking = _booking;
     if (booking == null || !booking.canStartRepeatPlan) return;
+    if (booking.lat == null || booking.lng == null) {
+      setState(() => _error = 'This booking has no saved location, so a recurring plan cannot be created from it.');
+      return;
+    }
     final result = await showModalBottomSheet<({String frequency, DateTime nextRun})>(
       context: context,
       isScrollControlled: true,
