@@ -16,26 +16,22 @@ import '../models/service.dart';
 import '../models/service_method.dart';
 import '../service_records/my_bookings_screen.dart';
 import '../theme/service_colors.dart';
+import 'method_booking_fields.dart';
 
-/// Standard + emergency booking creation. Inspection-required services are
-/// booked exactly like a standard service — `create_service_booking`
-/// itself opens the inspection record server-side (services_module_v2.sql,
-/// `create_service_booking`'s own `if v_service.requires_inspection`
-/// branch) — this screen doesn't need to know the difference beyond
-/// showing the "starts with an inspection" notice already on the detail
-/// screen. A "Repeat this service" toggle also creates a
-/// `recurring_service_plans` row (weekly/biweekly/monthly/quarterly) whose
-/// due bookings Services Admin generates; AMC and scheduled/ASAP booking
-/// types are still not surfaced here.
+/// Standard + emergency booking creation, now METHOD-AWARE (NEW Services
+/// Master Method architecture). The chosen [method]'s `methodCode` drives
+/// a [MethodBookingPlan] that decides which parts of this form show —
+/// preferred date, time slot, and the address label — and which
+/// `p_location_type` the booking uses. [MethodBookingFields] renders the
+/// method-specific inputs (pickup branch, drop address, plan frequency,
+/// enquiry contact, workflow stages, ...); those values are folded into
+/// `p_customer_notes` as a labelled block the provider + Services Admin
+/// read. `configId` still links the booking to the exact live method
+/// configuration, which `create_service_booking` re-validates server-side.
 ///
-/// [method] is the delivery method the customer chose on the service detail
-/// screen (NEW Services Master Method architecture). It is shown back to the
-/// customer as a summary here and its `configId` is passed to
-/// `create_service_booking` as `p_vendor_method_config_id`, which the RPC
-/// re-validates server-side (live status, service match, method radius,
-/// closed/holiday) and links to the booking; the per-config day capacity is
-/// then enforced concurrency-safe by a trigger. The method name + provider
-/// are also kept in the customer note for the provider's context.
+/// A precise map location is collected on every flow because
+/// `service_bookings.lat/lng` are NOT NULL - for a store / appointment /
+/// enquiry method it is framed as "your location (nearest branch)".
 class BookingFormScreen extends StatefulWidget {
   final ServiceRow service;
   final ServiceMethodRow? method;
@@ -51,7 +47,10 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   final _addressController = TextEditingController();
   final _notesController = TextEditingController();
 
-  /// Set only from the map picker — a real confirmed coordinate.
+  late final MethodBookingPlan _plan = MethodBookingPlan.forCode(widget.method?.methodCode);
+  Map<String, dynamic> _methodIntake = {};
+
+  /// Set only from the map picker - a real confirmed coordinate.
   double? _lat;
   double? _lng;
 
@@ -66,14 +65,23 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   bool _isSubmitting = false;
   String? _submitError;
 
+  bool get _isSubscription => widget.method?.methodCode == 'subscription';
+
   /// One key per screen instance, reused across any retry of THIS booking
-  /// attempt — same pattern as checkout_screen.dart's _idempotencyKey (see
-  /// its comment for the full rationale). A genuinely new booking attempt
-  /// gets a fresh key because it gets a fresh screen.
+  /// attempt - same pattern as checkout_screen.dart's _idempotencyKey.
   final String _idempotencyKey = List<int>.generate(
     16,
     (_) => Random.secure().nextInt(256),
   ).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+
+  @override
+  void initState() {
+    super.initState();
+    // Methods with no slot (walk-in / instant / enquiry) still need a
+    // NOT NULL preferred_date - default it to today.
+    if (!_plan.needsDate) _preferredDate = DateTime.now();
+    if (_isSubscription) _isRecurring = true;
+  }
 
   @override
   void dispose() {
@@ -82,17 +90,28 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     super.dispose();
   }
 
+  void _onMethodIntake(Map<String, dynamic> values) {
+    setState(() {
+      _methodIntake = values;
+      if (_isSubscription) {
+        final f = (values['plan_frequency'] ?? '').toString();
+        _recurringFrequency = switch (f) {
+          'weekly' => 'weekly',
+          'fortnightly' || 'biweekly' => 'biweekly',
+          'quarterly' => 'quarterly',
+          _ => 'monthly',
+        };
+      }
+    });
+  }
+
   Future<void> _openLocationPicker() async {
     final picked = await Navigator.of(context).push<PickedLocation>(
       MaterialPageRoute(
         builder: (_) => LocationPickerScreen(
           initial: (_lat == null || _lng == null)
               ? null
-              : PickedLocation(
-                  latitude: _lat!,
-                  longitude: _lng!,
-                  address: _addressController.text.trim(),
-                ),
+              : PickedLocation(latitude: _lat!, longitude: _lng!, address: _addressController.text.trim()),
         ),
       ),
     );
@@ -106,15 +125,11 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
-    final picked = await showDatePicker(context: context, initialDate: now, firstDate: now, lastDate: now.add(const Duration(days: 60)));
+    final picked =
+        await showDatePicker(context: context, initialDate: now, firstDate: now, lastDate: now.add(const Duration(days: 60)));
     if (picked != null && mounted) setState(() => _preferredDate = picked);
   }
 
-  /// Reads bytes once, right after picking — `Uint8List` + `Image.memory`
-  /// is this app's established cross-platform convention (see
-  /// customer_repository.dart's `Uint8ListSource`), never `dart:io File` /
-  /// `Image.file`, which doesn't work on the web build this app also
-  /// targets (a real bug caught and fixed before this ever shipped).
   Future<void> _pickEmergencyPhoto() async {
     final picked = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 80);
     if (picked == null) return;
@@ -147,6 +162,33 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     }
   }
 
+  String? _missingRequiredMethodField() {
+    final code = widget.method?.methodCode;
+    bool has(String k) => (_methodIntake[k]?.toString().trim().isNotEmpty ?? false);
+    switch (code) {
+      case 'instant_on_demand':
+        if (!has('urgency')) return 'Please describe what you need.';
+        break;
+      case 'pickup_and_drop':
+        if (!has('drop_address')) return 'Please enter the drop-off address.';
+        break;
+      case 'multi_step_workflow':
+        if (!has('scope_note')) return 'Please describe the problem / scope.';
+        break;
+      case 'lead_generation':
+        if (!has('requirement')) return 'Please describe what you need.';
+        if (!has('contact_phone')) return 'Please enter a contact number.';
+        break;
+      case 'subscription':
+        if (!has('plan_frequency')) return 'Please choose a plan frequency.';
+        break;
+      case 'hybrid':
+        if (!has('first_part')) return 'Please choose which part happens first.';
+        break;
+    }
+    return null;
+  }
+
   Future<void> _submit() async {
     if (_lat == null || _lng == null) {
       setState(() => _submitError = 'Please share your location to continue.');
@@ -156,8 +198,13 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
       setState(() => _submitError = 'Please enter your address.');
       return;
     }
-    if (_preferredDate == null) {
+    if (_plan.needsDate && _preferredDate == null) {
       setState(() => _submitError = 'Please choose a preferred date.');
+      return;
+    }
+    final methodError = _missingRequiredMethodField();
+    if (methodError != null) {
+      setState(() => _submitError = methodError);
       return;
     }
     if (_isEmergency && _emergencyPhoto == null) {
@@ -189,9 +236,10 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
         address: _addressController.text.trim(),
         lat: _lat!,
         lng: _lng!,
-        preferredDate: _preferredDate!,
+        preferredDate: _preferredDate ?? DateTime.now(),
         preferredTimeSlot: _timeSlot,
         bookingType: _isEmergency ? 'emergency' : 'one_time',
+        locationType: _plan.locationType,
         isEmergency: _isEmergency,
         emergencyProblemMedia: mediaUrls,
         customerNotes: _composeNotes(),
@@ -208,7 +256,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
             lng: _lng!,
             frequency: _recurringFrequency,
             preferredTimeSlot: _timeSlot,
-            nextRunDate: RecurringServicePlan.nextRunAfter(_preferredDate!, _recurringFrequency),
+            nextRunDate: RecurringServicePlan.nextRunAfter(_preferredDate ?? DateTime.now(), _recurringFrequency),
           );
         } on ServicesException catch (planError) {
           if (mounted) {
@@ -219,9 +267,11 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_isRecurring && !_isEmergency
-              ? 'Booking confirmed and a recurring plan was set up.'
-              : 'Booking confirmed! We are finding a provider for you.'),
+          content: Text(widget.method?.methodCode == 'lead_generation'
+              ? 'Enquiry sent - the provider will contact you.'
+              : (_isRecurring && !_isEmergency)
+                  ? 'Booking confirmed and a recurring plan was set up.'
+                  : 'Booking confirmed! We are finding a provider for you.'),
         ),
       );
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MyBookingsScreen()));
@@ -240,17 +290,29 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     }
   }
 
-  /// The chosen method is linked structurally via
-  /// `p_vendor_method_config_id`; this additionally records the method +
-  /// provider name in the free-text note so the provider and Services Admin
-  /// see it at a glance. The customer's own typed note (if any) follows it.
+  /// Free-text note = method line + method-specific intake block + the
+  /// customer's own typed note. `p_vendor_method_config_id` still carries
+  /// the structural link; this is the human-readable context.
   String? _composeNotes() {
-    final typed = _notesController.text.trim();
+    final parts = <String>[];
     final method = widget.method;
-    if (method == null) return typed.isEmpty ? null : typed;
-    final line = 'Requested delivery method: ${method.methodName} — ${method.vendorName}';
-    return typed.isEmpty ? line : '$line\n$typed';
+    if (method != null) {
+      parts.add('Requested method: ${method.methodName} - ${method.vendorName}');
+      if (_methodIntake.isNotEmpty) {
+        parts.add('-- ${method.methodName} details --');
+        _methodIntake.forEach((k, v) {
+          if (v == null || v.toString().trim().isEmpty) return;
+          parts.add('${_prettyKey(k)}: $v');
+        });
+      }
+    }
+    final typed = _notesController.text.trim();
+    if (typed.isNotEmpty) parts.add(typed);
+    return parts.isEmpty ? null : parts.join('\n');
   }
+
+  String _prettyKey(String k) =>
+      k.replaceAll('_', ' ').replaceFirstMapped(RegExp(r'^\w'), (m) => m.group(0)!.toUpperCase());
 
   static const _recurringOptions = [
     ('weekly', 'Every week'),
@@ -269,7 +331,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   Widget build(BuildContext context) {
     final method = widget.method;
     return Scaffold(
-      appBar: AppBar(title: const Text('Book Service')),
+      appBar: AppBar(title: Text(method?.methodCode == 'lead_generation' ? 'Send Enquiry' : 'Book Service')),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -279,15 +341,16 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
           if (method != null) ...[
             const SizedBox(height: 16),
             _SelectedMethodBanner(method: method),
+            MethodBookingFields(method: method, onChanged: _onMethodIntake),
           ],
 
           const SizedBox(height: 24),
 
-          if (widget.service.supportsEmergency) ...[
+          if (widget.service.supportsEmergency && _plan.needsServiceAddress) ...[
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Emergency booking', style: TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: const Text('Faster priority handling — an emergency charge applies.'),
+              subtitle: const Text('Faster priority handling - an emergency charge applies.'),
               value: _isEmergency,
               onChanged: (v) => setState(() => _isEmergency = v),
             ),
@@ -312,7 +375,10 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
             const SizedBox(height: 16),
           ],
 
-          const Text('Address', style: TextStyle(fontWeight: FontWeight.w700)),
+          Text(
+            _plan.needsServiceAddress ? _plan.addressLabel : 'Your location (helps pick the nearest branch)',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 8),
           TextField(
             controller: _addressController,
@@ -324,7 +390,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
             OutlinedButton.icon(
               onPressed: _openLocationPicker,
               icon: const Icon(Icons.map_outlined, size: 18),
-              label: const Text('Set service location on map'),
+              label: const Text('Set location on map'),
             )
           else ...[
             StaticLocationMap(point: LatLng(_lat!, _lng!), height: 140),
@@ -344,27 +410,51 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
             ]),
           ],
 
-          const SizedBox(height: 24),
-          const Text('Preferred Date', style: TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _pickDate,
-            icon: const Icon(Icons.calendar_today, size: 18),
-            label: Text(_preferredDate == null ? 'Select a date' : '${_preferredDate!.day}/${_preferredDate!.month}/${_preferredDate!.year}'),
-          ),
+          if (_plan.needsDate) ...[
+            const SizedBox(height: 24),
+            const Text('Preferred Date', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _pickDate,
+              icon: const Icon(Icons.calendar_today, size: 18),
+              label: Text(_preferredDate == null
+                  ? 'Select a date'
+                  : '${_preferredDate!.day}/${_preferredDate!.month}/${_preferredDate!.year}'),
+            ),
+          ],
 
-          const SizedBox(height: 24),
-          const Text('Preferred Time', style: TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: [
-              for (final slot in _timeSlots)
-                ChoiceChip(label: Text(slot.$2), selected: _timeSlot == slot.$1, onSelected: (_) => setState(() => _timeSlot = slot.$1)),
-            ],
-          ),
+          if (_plan.needsTimeSlot) ...[
+            const SizedBox(height: 24),
+            const Text('Preferred Time', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final slot in _timeSlots)
+                  ChoiceChip(
+                    label: Text(slot.$2),
+                    selected: _timeSlot == slot.$1,
+                    onSelected: (_) => setState(() => _timeSlot = slot.$1),
+                  ),
+              ],
+            ),
+          ],
 
-          if (!_isEmergency) ...[
+          if (_isSubscription) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: ServiceColors.primaryBlueLight,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                'A recurring plan (${_recurringFrequency == 'biweekly' ? 'every 2 weeks' : 'every $_recurringFrequency'}) '
+                'will be created along with this first visit.',
+                style: const TextStyle(fontSize: 12.5),
+              ),
+            ),
+          ] else if (!_isEmergency && _plan.needsDate) ...[
             const SizedBox(height: 16),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
@@ -377,9 +467,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
               DropdownButtonFormField<String>(
                 initialValue: _recurringFrequency,
                 decoration: const InputDecoration(labelText: 'Frequency', border: OutlineInputBorder()),
-                items: [
-                  for (final o in _recurringOptions) DropdownMenuItem(value: o.$1, child: Text(o.$2)),
-                ],
+                items: [for (final o in _recurringOptions) DropdownMenuItem(value: o.$1, child: Text(o.$2))],
                 onChanged: (v) => setState(() => _recurringFrequency = v ?? _recurringFrequency),
               ),
           ],
@@ -395,7 +483,10 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
 
           const SizedBox(height: 24),
           if (_submitError != null)
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(_submitError!, style: const TextStyle(color: Colors.red))),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(_submitError!, style: const TextStyle(color: Colors.red)),
+            ),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -403,7 +494,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
               onPressed: (_isSubmitting || _isUploadingPhoto) ? null : _submit,
               child: (_isSubmitting || _isUploadingPhoto)
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Confirm Booking'),
+                  : Text(method?.methodCode == 'lead_generation' ? 'Send Enquiry' : 'Confirm Booking'),
             ),
           ),
         ],
@@ -413,8 +504,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
 }
 
 /// Read-only summary of the delivery method the customer picked on the
-/// previous screen. Shows customer-facing information only — name, icon,
-/// short definition, price / travel charge, duration, booking requirements.
+/// previous screen.
 class _SelectedMethodBanner extends StatelessWidget {
   final ServiceMethodRow method;
 
@@ -459,8 +549,7 @@ class _SelectedMethodBanner extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          Text('with ${method.vendorName}',
-              style: const TextStyle(fontSize: 12, color: ServiceColors.textSecondary)),
+          Text('with ${method.vendorName}', style: const TextStyle(fontSize: 12, color: ServiceColors.textSecondary)),
           if (method.definition.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(method.definition, style: const TextStyle(fontSize: 12.5, height: 1.35)),
@@ -473,7 +562,8 @@ class _SelectedMethodBanner extends StatelessWidget {
               if (method.priceLabel != null)
                 Text(method.priceLabel!, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
               if (method.durationLabel != null)
-                Text('~ ${method.durationLabel!}', style: const TextStyle(fontSize: 12, color: ServiceColors.textSecondary)),
+                Text('~ ${method.durationLabel!}',
+                    style: const TextStyle(fontSize: 12, color: ServiceColors.textSecondary)),
             ],
           ),
           if (method.hasBookingRequirements) ...[

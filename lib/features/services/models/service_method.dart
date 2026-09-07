@@ -120,6 +120,18 @@ class ServiceMethodRow {
   final bool isAvailable;
   final MethodUnavailableReason? unavailableReason;
 
+  /// Data-driven field descriptors for this method's booking-time inputs
+  /// (`service_master_method_versions.config_schema`, surfaced by
+  /// browse_service_methods). Each entry: {key,label,type,required,unit,options}.
+  final List<Map<String, dynamic>> configSchema;
+
+  /// The Admin-set per-(service,method) config values (branch, slots,
+  /// frequency options, ...), from `service_allowed_methods.config`.
+  final Map<String, dynamic> serviceConfig;
+
+  /// Position the Admin gave this method in the category/service list.
+  final int displayOrder;
+
   const ServiceMethodRow({
     required this.configId,
     required this.vendorId,
@@ -152,6 +164,9 @@ class ServiceMethodRow {
     this.requiredProofNote,
     this.isAvailable = true,
     this.unavailableReason,
+    this.configSchema = const [],
+    this.serviceConfig = const {},
+    this.displayOrder = 999,
   });
 
   MethodAvailability get availability =>
@@ -245,6 +260,14 @@ class ServiceMethodRow {
       requiredProofNote: json['required_proof_note'] as String?,
       isAvailable: available,
       unavailableReason: available ? null : _reasonFromWire(json['unavailable_reason'] as String?),
+      configSchema: (json['method_config_schema'] as List?)
+              ?.map((e) => Map<String, dynamic>.from(e as Map))
+              .toList() ??
+          const [],
+      serviceConfig: json['method_service_config'] == null
+          ? const {}
+          : Map<String, dynamic>.from(json['method_service_config'] as Map),
+      displayOrder: (json['method_display_order'] as num?)?.toInt() ?? 999,
     );
   }
 }
