@@ -10,18 +10,15 @@ class HeaderAction {
   const HeaderAction({required this.icon, this.badgeCount = 0, this.onTap});
 }
 
-/// Shared header shown at the top of a sector's Home screen — a location
-/// row (city + short address, tappable), an optional centred brand mark,
-/// plus up to two trailing action icons. Fully theme-parameterized
-/// (background/text/icon colors) so every sector renders this same
-/// structure/spacing/behavior in its own brand color rather than each
-/// sector maintaining its own near-identical copy.
+/// Shared header shown at the top of a sector's Home / Categories screen — a
+/// single-line location row (city + short address, tappable), an optional
+/// centred brand mark, plus up to two trailing action icons. Fully
+/// theme-parameterized (background/text/icon colors) so every sector renders
+/// this same structure/spacing/behavior in its own brand color.
 ///
-/// Extracted from Daily Essentials' original `HomeHeader`
-/// (lib/screens/home/widgets/home_header.dart) — every value below
-/// defaults to that widget's exact original values, so wiring Daily
-/// Essentials to this shared component changes zero pixels of its
-/// rendering when [centerWidget] is not supplied.
+/// The location is a **single horizontal line** —
+/// `📍 City ˅  •  Short address` — with the address ellipsized rather than
+/// wrapping to a second line (reference `01_Home.png` / `02_Categories.png`).
 class CustomerHomeHeader extends StatelessWidget {
   final Color backgroundColor;
   final Color textPrimaryColor;
@@ -33,9 +30,7 @@ class CustomerHomeHeader extends StatelessWidget {
   final List<HeaderAction> actions;
 
   /// Optional brand mark shown centred between the location block and the
-  /// trailing action icons (the "SnapBee / Local Needs - Faster Life"
-  /// wordmark on the Daily Essentials Home reference). When null the header
-  /// renders exactly as before — the location block simply expands to fill.
+  /// trailing action icons. When null the location block expands to fill.
   final Widget? centerWidget;
 
   const CustomerHomeHeader({
@@ -56,37 +51,38 @@ class CustomerHomeHeader extends StatelessWidget {
     final location = InkWell(
       onTap: onLocationTap,
       borderRadius: BorderRadius.circular(8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.location_on_outlined, color: textPrimaryColor, size: 20),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Text(
-                  cityLabel,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: textPrimaryColor, fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-              ),
-              const SizedBox(width: 4),
-              Icon(Icons.keyboard_arrow_down, color: textPrimaryColor, size: 20),
-            ],
-          ),
-          const SizedBox(height: 2),
-          Padding(
-            padding: const EdgeInsets.only(left: 24),
-            child: Text(
-              addressLabel,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: textSecondaryColor, fontSize: 13),
+          Icon(Icons.location_on_rounded, color: iconColor, size: 20),
+          const SizedBox(width: 4),
+          Text(
+            cityLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: textPrimaryColor,
+              fontSize: 15.5,
+              fontWeight: FontWeight.w700,
             ),
           ),
+          Icon(Icons.keyboard_arrow_down_rounded,
+              color: textPrimaryColor, size: 18),
+          if (addressLabel.trim().isNotEmpty) ...[
+            const SizedBox(width: 6),
+            Text('•',
+                style: TextStyle(
+                    color: textSecondaryColor, fontSize: 13, height: 1)),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                addressLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: textSecondaryColor, fontSize: 12.5),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -105,17 +101,19 @@ class CustomerHomeHeader extends StatelessWidget {
 
     return Container(
       color: backgroundColor,
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: centerWidget == null
             ? [Expanded(child: location), ...trailing]
             : [
-                Flexible(child: location),
-                const SizedBox(width: 8),
-                const Spacer(),
+                // Location takes the remaining left space and keeps its
+                // single line (address ellipsizes); the wordmark sits to
+                // its right and the actions pin to the far right.
+                Expanded(child: location),
+                const SizedBox(width: 10),
                 centerWidget!,
-                const Spacer(),
+                const SizedBox(width: 10),
                 ...trailing,
               ],
       ),
