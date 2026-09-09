@@ -5,11 +5,11 @@ import 'product_card_widget.dart';
 import 'product_model.dart';
 
 /// "Products For You" — a horizontally scrolling carousel of real Daily
-/// Essentials catalog products ([ProductRepository.fetchAll]: active-status
-/// and browse-time coverage filtered). Sits directly below "Popular Stores
-/// Near You" on Home and deliberately shares that section's
-/// [SnapBeeSectionHeader] + horizontal-strip visual language so it reads as
-/// native to the existing design.
+/// Essentials catalog products ([ProductRepository.fetchAll]: active-status,
+/// real availability/inventory and browse-time coverage filtered). Sits
+/// directly below "Popular Stores Near You" on Home and deliberately shares
+/// that section's [SnapBeeSectionHeader] + horizontal-strip visual language
+/// so it reads as native to the existing design.
 ///
 ///  * [products] null  → still loading (shows a small spinner)
 ///  * [products] empty → loaded, nothing available in the customer's area
@@ -21,6 +21,17 @@ class ProductsForYouWidget extends StatelessWidget {
   final ValueChanged<ProductModel>? onProductTap;
   final ValueChanged<ProductModel>? onAdd;
 
+  /// Product ids currently in the customer's wishlist. Empty when the
+  /// customer isn't signed in / has no wishlist.
+  final Set<String> wishlistedIds;
+
+  /// Called when the heart on a card is tapped. When null, no heart shows.
+  final ValueChanged<ProductModel>? onWishlistToggle;
+
+  /// `vendor_id` to store name, used for the small store label on a card.
+  /// Missing entries just omit the line.
+  final Map<String, String> vendorNames;
+
   const ProductsForYouWidget({
     super.key,
     required this.products,
@@ -28,6 +39,9 @@ class ProductsForYouWidget extends StatelessWidget {
     this.onSeeAll,
     this.onProductTap,
     this.onAdd,
+    this.wishlistedIds = const {},
+    this.onWishlistToggle,
+    this.vendorNames = const {},
   });
 
   @override
@@ -62,7 +76,7 @@ class ProductsForYouWidget extends StatelessWidget {
               // readable on small phones and don't balloon on wide web.
               final cardWidth =
                   (constraints.maxWidth * 0.4).clamp(150.0, 200.0);
-              final listHeight = cardWidth * 1.75;
+              final listHeight = cardWidth * 1.85;
 
               return SizedBox(
                 height: listHeight,
@@ -81,11 +95,16 @@ class ProductsForYouWidget extends StatelessWidget {
                     return ProductCardWidget(
                       product: product,
                       width: cardWidth,
+                      storeName: vendorNames[product.vendorId],
+                      isWishlisted: wishlistedIds.contains(product.id),
                       onTap: onProductTap == null
                           ? null
                           : () => onProductTap!(product),
                       onAddPressed:
                           onAdd == null ? null : () => onAdd!(product),
+                      onWishlistToggle: onWishlistToggle == null
+                          ? null
+                          : () => onWishlistToggle!(product),
                     );
                   },
                 ),

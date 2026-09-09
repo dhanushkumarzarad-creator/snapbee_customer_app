@@ -3,11 +3,19 @@ import '../../../widgets/catalog_image.dart';
 import 'product_model.dart';
 
 /// A reusable, Material 3 product card used across the Customer app —
-/// trending lists, category grids, search results, etc.
+/// trending lists, category grids, search results, "Products For You" on
+/// Home, etc.
 ///
 /// Sizing is driven entirely by the parent's constraints (via
 /// [LayoutBuilder]/[width]) rather than any hardcoded device width, so the
 /// same widget scales correctly on phones, tablets, and Flutter Web.
+///
+/// Every extra affordance is opt-in so the existing call sites are
+/// unaffected:
+///  * [storeName]        — shows a small store-name line (Home passes the
+///                         real vendor name; other surfaces omit it).
+///  * [onWishlistToggle] — when non-null, a heart button is drawn over the
+///                         image and [isWishlisted] paints its filled state.
 class ProductCardWidget extends StatelessWidget {
   final ProductModel product;
 
@@ -16,15 +24,29 @@ class ProductCardWidget extends StatelessWidget {
   /// card expands to fill its parent's available width — ideal for grids.
   final double? width;
 
+  /// Optional vendor/store label shown under the unit line.
+  final String? storeName;
+
+  /// Whether this product is currently in the customer's wishlist. Only
+  /// used when [onWishlistToggle] is provided.
+  final bool isWishlisted;
+
   final VoidCallback? onTap;
   final VoidCallback? onAddPressed;
+
+  /// When non-null, a wishlist/favourite heart is shown on the image and
+  /// this is called when the customer taps it.
+  final VoidCallback? onWishlistToggle;
 
   const ProductCardWidget({
     super.key,
     required this.product,
     this.width,
+    this.storeName,
+    this.isWishlisted = false,
     this.onTap,
     this.onAddPressed,
+    this.onWishlistToggle,
   });
 
   @override
@@ -50,7 +72,11 @@ class ProductCardWidget extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                _ProductImage(product: product),
+                _ProductImage(
+                  product: product,
+                  isWishlisted: isWishlisted,
+                  onWishlistToggle: onWishlistToggle,
+                ),
                 const SizedBox(height: 8),
                 Text(
                   product.name,
@@ -67,6 +93,29 @@ class ProductCardWidget extends StatelessWidget {
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),
+                  ),
+                ],
+                if ((storeName ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.storefront_outlined,
+                        size: 12,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 3),
+                      Expanded(
+                        child: Text(
+                          storeName!.trim(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
                 const SizedBox(height: 4),
@@ -86,8 +135,14 @@ class ProductCardWidget extends StatelessWidget {
 
 class _ProductImage extends StatelessWidget {
   final ProductModel product;
+  final bool isWishlisted;
+  final VoidCallback? onWishlistToggle;
 
-  const _ProductImage({required this.product});
+  const _ProductImage({
+    required this.product,
+    this.isWishlisted = false,
+    this.onWishlistToggle,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -114,6 +169,16 @@ class _ProductImage extends StatelessWidget {
               child: _DiscountBadge(percent: product.discountPercent),
             ),
 
+          if (onWishlistToggle != null)
+            Positioned(
+              top: 4,
+              right: 4,
+              child: _WishlistButton(
+                isWishlisted: isWishlisted,
+                onTap: onWishlistToggle!,
+              ),
+            ),
+
           if (!product.inStock)
             Positioned.fill(
               child: ColoredBox(
@@ -130,6 +195,36 @@ class _ProductImage extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _WishlistButton extends StatelessWidget {
+  final bool isWishlisted;
+  final VoidCallback onTap;
+
+  const _WishlistButton({required this.isWishlisted, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Material(
+      color: colorScheme.surface.withValues(alpha: 0.92),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(5),
+          child: Icon(
+            isWishlisted ? Icons.favorite : Icons.favorite_border,
+            size: 16,
+            color: isWishlisted
+                ? colorScheme.error
+                : colorScheme.onSurfaceVariant,
+          ),
+        ),
       ),
     );
   }
@@ -213,7 +308,7 @@ class _PriceRow extends StatelessWidget {
       spacing: 6,
       children: [
         Text(
-          '\u20B9${product.currentPrice.toStringAsFixed(0)}',
+          '₹${product.currentPrice.toStringAsFixed(0)}',
           style: theme.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w700,
             color: colorScheme.primary,
@@ -221,7 +316,7 @@ class _PriceRow extends StatelessWidget {
         ),
         if (product.hasDiscount)
           Text(
-            '\u20B9${product.oldPrice!.toStringAsFixed(0)}',
+            '₹${product.oldPrice!.toStringAsFixed(0)}',
             style: theme.textTheme.bodySmall?.copyWith(
               color: colorScheme.onSurfaceVariant,
               decoration: TextDecoration.lineThrough,

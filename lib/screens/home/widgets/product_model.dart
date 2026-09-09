@@ -45,9 +45,16 @@ class ProductModel {
     return percent.round();
   }
 
-  /// Builds a UI-ready [ProductModel] from a real catalog row. `rating`/
-  /// `ratingCount` have no backing column yet (no reviews feature exists)
-  /// so they stay at their defaults (0) rather than being fabricated.
+  /// Builds a UI-ready [ProductModel] from a real catalog row.
+  ///
+  /// `currentPrice` / `oldPrice` come straight from the live
+  /// `discount_price` / `price` columns, `unit` from the live `unit`
+  /// column, and `inStock` from the row's real availability + inventory
+  /// state (`is_available` AND (`track_inventory` is off OR
+  /// `stock_quantity` > 0)). `rating` / `ratingCount` have no product-level
+  /// backing column yet (Daily Essentials reviews are per-order, in
+  /// `de_order_reviews`, not per-product) so they stay at their defaults
+  /// rather than being fabricated.
   factory ProductModel.fromRow(ProductRow row) {
     return ProductModel(
       id: row.id,
@@ -56,6 +63,7 @@ class ProductModel {
       currentPrice: row.discountPrice ?? row.price,
       oldPrice: row.discountPrice != null ? row.price : null,
       unit: row.unit,
+      inStock: row.inStock,
       vendorId: row.vendorId,
     );
   }

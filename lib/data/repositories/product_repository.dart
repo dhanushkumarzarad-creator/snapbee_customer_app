@@ -2,22 +2,25 @@
 // product_repository.dart
 // ----------------------------------------------------------------------------
 // Read-only, customer-facing product browsing against the *live* `products`
-// schema: id, name, price, status, category, deleted_at, created_at,
-// updated_at, confirmed by column-by-column introspection against the real
-// table. `image_urls` is an optional additive column (see snapbee_admin's
-// product_images_column.sql — reviewed but not yet applied at time of
-// writing): selected first, falls back to the base column set on 42703,
-// same defensive pattern this app's category repository already uses for
-// `display_order`.
+// schema. Column list re-verified column-by-column against production before
+// this change: id, name, price, status, category, deleted_at, created_at,
+// updated_at, vendor_id, category_id, description, unit, image_urls,
+// discount_price, is_available, qc_status, publish_state, stock_quantity,
+// branch_id, track_inventory (plus dimension / AI columns not needed here).
 //
-// `vendor_id` IS live now (re-verified column-by-column against production
-// immediately before this change — catalog_schema_alignment.sql landed
-// since this file's comments were first written) and is selected
-// unconditionally alongside the base columns: real checkout needs it to
-// resolve which vendor/branch an order belongs to, so a product with no
-// vendor can't usefully reach the cart at all. `discount_price`/`unit` are
-// still read defensively (see `discountPrice`/`unit` below) — this repo
-// only asserts what it just re-verified live, nothing more.
+// `unit`, `discount_price`, `is_available`, `stock_quantity` and
+// `track_inventory` ARE live columns now. An earlier revision of this file
+// pre-dated them and hard-coded `unit` to '' and `discountPrice` to null;
+// that is fixed here so real per-product variant text, MRP strike-through,
+// discount % and out-of-stock state can surface on the catalog cards. They
+// are selected via [_fullColumns] with the same defensive 42703 fall-back to
+// [_baseColumns] this repo already uses, so a stripped-down environment that
+// lacks one of them keeps working (the fields just fall back to their
+// defaults).
+//
+// `vendor_id` is selected unconditionally: real checkout needs it to resolve
+// which vendor/branch an order belongs to, so a product with no vendor can't
+// usefully reach the cart at all.
 // ============================================================================
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -33,6 +36,26 @@ class ProductRow {
   final List<String> imageUrls;
   final String vendorId;
 
+  /// Per-product variant / pack text, e.g. "500 g", "1 L", "1 pc". Empty
+  /// when the vendor hasn't set one.
+  final String unit;
+
+  /// Live `products.discount_price`. Non-null and below [price] means the
+  /// product is on offer; the plain [price] then acts as the struck-through
+  /// MRP. Null (or >= price) means no discount — see [discountPrice].
+  final double? discountPriceValue;
+
+  /// Live `products.is_available` — the vendor's manual on/off switch for a
+  /// product, independent of stock. Defaults to true when absent.
+  final bool isAvailable;
+
+  /// Live `products.stock_quantity` (null when not tracked / column absent).
+  final int? stockQuantity;
+
+  /// Live `products.track_inventory` — when true, [stockQuantity] gates
+  /// availability; when false, stock is not counted.
+  final bool trackInventory;
+
   const ProductRow({
     required this.id,
     required this.name,
@@ -40,26 +63,39 @@ class ProductRow {
     required this.category,
     required this.vendorId,
     this.imageUrls = const [],
+    this.unit = '',
+    this.discountPriceValue,
+    this.isAvailable = true,
+    this.stockQuantity,
+    this.trackInventory = false,
   });
 
   String? get primaryImageUrl => imageUrls.isEmpty ? null : imageUrls.first;
 
-  /// No discount_price column exists on the live `products` table yet, so
-  /// this is always the plain price.
-  double? get discountPrice => null;
+  /// The active discount price, or null when the product is not discounted
+  /// (a non-positive or >= MRP value counts as "no discount").
+  double? get discountPrice {
+    final d = discountPriceValue;
+    if (d == null || d <= 0 || d >= price) return null;
+    return d;
+  }
 
-  /// No unit column exists on the live `products` table yet.
-  String get unit => '';
+  /// Whether a customer can add this product to the cart right now: the
+  /// vendor switch is on AND (inventory isn't tracked OR there is stock).
+  bool get inStock =>
+      isAvailable && (!trackInventory || (stockQuantity ?? 0) > 0);
 
   String get displayPrice {
-    final rounded = price % 1 == 0
-        ? price.toStringAsFixed(0)
-        : price.toStringAsFixed(2);
+    final value = discountPrice ?? price;
+    final rounded = value % 1 == 0
+        ? value.toStringAsFixed(0)
+        : value.toStringAsFixed(2);
     return '₹$rounded';
   }
 
   factory ProductRow.fromJson(Map<String, dynamic> json) {
     final rawPrice = json['price'];
+    final rawDiscount = json['discount_price'];
     return ProductRow(
       id: json['id'] as String,
       name: json['name'] as String,
@@ -69,6 +105,15 @@ class ProductRow {
       category: json['category'] as String? ?? '',
       vendorId: json['vendor_id'] as String? ?? '',
       imageUrls: (json['image_urls'] as List?)?.cast<String>() ?? const [],
+      unit: (json['unit'] as String?)?.trim() ?? '',
+      discountPriceValue: rawDiscount is num
+          ? rawDiscount.toDouble()
+          : (rawDiscount == null
+              ? null
+              : double.tryParse(rawDiscount.toString())),
+      isAvailable: json['is_available'] as bool? ?? true,
+      stockQuantity: (json['stock_quantity'] as num?)?.toInt(),
+      trackInventory: json['track_inventory'] as bool? ?? false,
     );
   }
 }
@@ -89,7 +134,8 @@ class ProductRepository {
 
   static const String _table = 'products';
   static const String _fullColumns =
-      'id, name, price, category, vendor_id, image_urls';
+      'id, name, price, category, vendor_id, image_urls, unit, discount_price, '
+      'is_available, stock_quantity, track_inventory';
   static const String _baseColumns = 'id, name, price, category, vendor_id';
 
   /// Products whose `category` text column matches one of [categoryNames]
@@ -120,8 +166,8 @@ class ProductRepository {
 
   /// [build] must construct a fresh filter chain each call — a
   /// PostgrestFilterBuilder is single-use, so the fallback attempt below
-  /// needs its own instance. Tries `image_urls` first; falls back to the
-  /// base column set if that column isn't migrated in yet, same pattern
+  /// needs its own instance. Tries the full column set first; falls back to
+  /// the base set if any additive column isn't migrated in yet, same pattern
   /// this app's category repository uses for `display_order`.
   ///
   /// Every customer-facing list goes through here, so browse-time vendor

@@ -6,6 +6,7 @@ import '../../data/cart/cart_store.dart';
 import '../../data/repositories/category_repository.dart';
 import '../../data/repositories/product_repository.dart';
 import '../../data/repositories/vendor_repository.dart';
+import '../../data/repositories/wishlist_repository.dart';
 import '../category/category_screen.dart';
 import '../category/featured_products_screen.dart';
 import '../../widgets/customer_home_header.dart';
@@ -49,10 +50,17 @@ class _HomeScreenState extends State<HomeScreen> {
   final _categoryRepo = CategoryRepository(Supabase.instance.client);
   final _vendorRepo = VendorRepository(Supabase.instance.client);
   final _productRepo = ProductRepository(Supabase.instance.client);
+  final WishlistSource _wishlist = WishlistRepository(Supabase.instance.client);
 
   List<CategoryItem>? _categories;
   List<VendorRow>? _stores;
   List<ProductModel>? _products;
+
+  /// `vendor_id` to store name, for the small store label on product cards.
+  Map<String, String> _vendorNames = const {};
+
+  /// Product ids in the signed-in customer's wishlist (empty when signed out).
+  Set<String> _wishlistedIds = {};
 
   @override
   void initState() {
@@ -107,9 +115,30 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _products = [for (final row in rows) ProductModel.fromRow(row)];
       });
+      // Resolve the store name for each product (best-effort; a missing
+      // name just omits the line on that card).
+      try {
+        final names =
+            await _vendorRepo.fetchNamesByIds(rows.map((r) => r.vendorId));
+        if (!mounted) return;
+        setState(() => _vendorNames = names);
+      } catch (_) {
+        // Leave as-is; cards render without the store label.
+      }
     } catch (_) {
       // Leave null; ProductsForYouWidget keeps showing its loading state
       // rather than fabricating a catalog.
+    }
+
+    // Wishlist state is optional decoration — only present for a signed-in
+    // customer with a linked profile. Any failure just leaves the hearts
+    // in their unfilled state.
+    try {
+      final ids = await _wishlist.fetchWishlistedProductIds();
+      if (!mounted) return;
+      setState(() => _wishlistedIds = ids);
+    } catch (_) {
+      // Signed out / no wishlist — leave empty.
     }
   }
 
@@ -188,6 +217,51 @@ class _HomeScreenState extends State<HomeScreen> {
       vendorId: product.vendorId,
     );
     _showSnack('${product.name} added to cart');
+  }
+
+  /// Toggles a product in the customer's wishlist through the same
+  /// [WishlistRepository] the Product Details screen uses. Optimistic: the
+  /// heart flips immediately and rolls back if the write fails (or the
+  /// customer isn't signed in).
+  Future<void> _toggleWishlist(ProductModel product) async {
+    final wasWishlisted = _wishlistedIds.contains(product.id);
+    setState(() {
+      _wishlistedIds = {..._wishlistedIds};
+      if (wasWishlisted) {
+        _wishlistedIds.remove(product.id);
+      } else {
+        _wishlistedIds.add(product.id);
+      }
+    });
+
+    try {
+      if (wasWishlisted) {
+        await _wishlist.remove(product.id);
+      } else {
+        await _wishlist.add(product.id);
+      }
+      _showSnack(
+        wasWishlisted ? 'Removed from wishlist' : 'Added to wishlist',
+      );
+    } on WishlistUnavailableException {
+      _rollbackWishlist(product.id, wasWishlisted);
+      _showSnack('Sign in to use your wishlist.');
+    } catch (_) {
+      _rollbackWishlist(product.id, wasWishlisted);
+      _showSnack('Could not update your wishlist.');
+    }
+  }
+
+  void _rollbackWishlist(String productId, bool wasWishlisted) {
+    if (!mounted) return;
+    setState(() {
+      _wishlistedIds = {..._wishlistedIds};
+      if (wasWishlisted) {
+        _wishlistedIds.add(productId);
+      } else {
+        _wishlistedIds.remove(productId);
+      }
+    });
   }
 
   @override
@@ -299,10 +373,13 @@ class _HomeScreenState extends State<HomeScreen> {
               ProductsForYouWidget(
                 products: _products,
                 isLoading: _products == null,
+                wishlistedIds: _wishlistedIds,
+                vendorNames: _vendorNames,
                 onSeeAll: () => _push(const FeaturedProductsScreen()),
                 onProductTap: (product) =>
                     _push(ProductDetailsScreen(product: product)),
                 onAdd: _addProductToCart,
+                onWishlistToggle: _toggleWishlist,
               ),
 
               const SizedBox(height: 6),
