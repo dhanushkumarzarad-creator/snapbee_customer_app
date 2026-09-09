@@ -1,0 +1,101 @@
+name: Deploy customer app (web)
+
+# Builds the Flutter web bundle and publishes it to GitHub Pages on every
+# push to master.
+#
+# There are no secrets: the customer app's only runtime config is the
+# Supabase project URL and the *publishable* (anon) key, both public by
+# design and already committed in .env.example. This workflow materialises
+# .env from those values (with APP_ENV=production) before building, because
+# lib/main.dart does `dotenv.load(fileName: '.env')` and pubspec.yaml lists
+# `.env` as a bundled asset.
+#
+# ONE-TIME SETUP (repo admin, once): Settings -> Pages -> "Build and
+# deployment" -> Source = "GitHub Actions". After that this is fully
+# automatic. Live URL:
+#   https://dhanushkumarzarad-creator.github.io/snapbee_customer_app/
+# (also printed in the "deploy" job summary).
+#
+# Custom domain later: set it under Settings -> Pages and change the
+# --base-href below from "/${{ github.event.repository.name }}/" to "/".
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.6
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Non-secret public config. Same URL + publishable key as .env.example;
+      # only APP_ENV differs (production for the deployed build).
+      - name: Materialise .env (public config, no secrets)
+        run: |
+          cat > .env <<'ENV'
+          SUPABASE_URL=https://zhdhkvoxkdmsuiyehgsw.supabase.co
+          SUPABASE_ANON_KEY=sb_publishable_6CT-UQ0hog6b4Y9oOEljSw_LMH3V3D5
+          APP_ENV=production
+          ENV
+
+      # Quality gates — a regression blocks the deploy. Suite is green today
+      # (analyze: 0 issues, flutter test: 211/211).
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build web
+        run: >-
+          flutter build web --release --no-tree-shake-icons
+          --base-href "/${{ github.event.repository.name }}/"
+
+      - name: SPA fallback + disable Jekyll
+        run: |
+          cp build/web/index.html build/web/404.html
+          touch build/web/.nojekyll
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

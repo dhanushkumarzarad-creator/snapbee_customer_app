@@ -1,6 +1,19 @@
 # snapbee_customer_app
 
-A new Flutter project.
+The SnapBee customer-facing Flutter app (web + mobile).
+
+## Deployment (web)
+
+Every push to `master` runs `.github/workflows/deploy-web.yml`:
+`flutter analyze` + `flutter test` -> `flutter build web --release` ->
+publish to **GitHub Pages**.
+
+Live: <https://dhanushkumarzarad-creator.github.io/snapbee_customer_app/>
+
+No secrets are configured -- the Supabase URL and *publishable* (anon) key
+are public by design; the workflow writes `.env` from those values with
+`APP_ENV=production` before building. Deploy manually via Actions ->
+"Deploy customer app (web)" -> Run workflow.
 
 ## Getting Started
 
