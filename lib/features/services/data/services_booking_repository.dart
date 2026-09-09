@@ -61,6 +61,7 @@ class ServicesBookingRepository {
     String? idempotencyKey,
     String? vendorId,
     String? vendorMethodConfigId,
+    Map<String, dynamic>? methodIntake,
   }) async {
     if (_client.auth.currentSession == null) {
       throw const ServicesException('Your session has expired. Please sign in again.');
@@ -88,6 +89,11 @@ class ServicesBookingRepository {
         'p_is_emergency': isEmergency,
         'p_emergency_problem_media': emergencyProblemMedia,
         'p_idempotency_key': idempotencyKey,
+        // Structured method-specific answers (drop address, chosen hybrid
+        // component, workflow scope note, ...) — validated server-side and
+        // stored on service_bookings.method_intake
+        // (supabase/services_method_readiness.sql).
+        if (methodIntake != null && methodIntake.isNotEmpty) 'p_method_intake': methodIntake,
       });
       if (bookingId == null || (bookingId as String).isEmpty) {
         throw const ServicesException('Could not create your booking. Please try again.');
@@ -101,6 +107,65 @@ class ServicesBookingRepository {
       throw ServicesException(_mapRpcError(error.message));
     } catch (_) {
       throw const ServicesException('Could not create your booking. Please check your connection and try again.');
+    }
+  }
+
+  /// Lead Generation method — submits an enquiry as a real record
+  /// (service_leads) instead of a priced booking. `submit_service_lead`
+  /// (supabase/services_method_readiness.sql) resolves + notifies the
+  /// routed provider and returns the lead id.
+  Future<String> submitServiceLead({
+    required String serviceId,
+    String? categoryId,
+    required String methodId,
+    String? vendorMethodConfigId,
+    required String requirement,
+    required String contactPhone,
+    String? contactEmail,
+    String? preferredTime,
+    String? address,
+  }) async {
+    if (_client.auth.currentSession == null) {
+      throw const ServicesException('Your session has expired. Please sign in again.');
+    }
+    try {
+      final row = await _client.rpc('submit_service_lead', params: {
+        'p_service_id': serviceId,
+        'p_category_id': categoryId,
+        'p_method_id': methodId,
+        'p_vendor_method_config_id': vendorMethodConfigId,
+        'p_requirement': requirement,
+        'p_contact_phone': contactPhone,
+        'p_contact_email': contactEmail,
+        'p_preferred_time': preferredTime,
+        'p_address': address,
+      });
+      final id = (row is Map) ? row['id'] as String? : row as String?;
+      if (id == null || id.isEmpty) {
+        throw const ServicesException('Could not send your enquiry. Please try again.');
+      }
+      return id;
+    } on AuthException {
+      throw const ServicesException('Your session has expired. Please sign in again.');
+    } on ServicesException {
+      rethrow;
+    } on PostgrestException catch (error) {
+      throw ServicesException(_mapRpcError(error.message));
+    } catch (_) {
+      throw const ServicesException('Could not send your enquiry. Please check your connection and try again.');
+    }
+  }
+
+  /// This customer's own enquiries (RLS: service_leads_customer_select).
+  Future<List<Map<String, dynamic>>> fetchMyLeads() async {
+    try {
+      final rows = await _client
+          .from('service_leads')
+          .select('*, services(name)')
+          .order('created_at', ascending: false);
+      return (rows as List).map((r) => Map<String, dynamic>.from(r as Map)).toList();
+    } catch (_) {
+      return const [];
     }
   }
 

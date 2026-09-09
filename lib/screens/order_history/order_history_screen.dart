@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'models/order_history_model.dart';
 import 'widgets/order_history_card.dart';
 import '../orders/order_details_screen.dart';
+import '../orders/reorder_screen.dart';
 
 /// Premium order history screen for the SnapBee Customer App — modeled
 /// after Blinkit / Swiggy / Zepto past-orders screens.
@@ -76,11 +77,10 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
 
   void _reorder(OrderHistoryModel order) {
     widget.onReorder?.call(order);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Items from #${order.orderNumber} added to cart'),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ReorderScreen(orderId: order.orderNumber, storeName: order.storeName),
       ),
     );
   }

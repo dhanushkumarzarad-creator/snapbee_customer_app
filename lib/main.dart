@@ -3,6 +3,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/config/env_config.dart';
 import 'core/constants/app_colors.dart';
+import 'core/design/snapbee_design.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/main_screen.dart';
 
@@ -42,20 +43,53 @@ class SnapBeeApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: colorScheme,
-        scaffoldBackgroundColor: AppColors.background,
+        scaffoldBackgroundColor: SnapBeeColors.scaffold,
+        // System font; the reference hierarchy is achieved via weights/sizes
+        // in SnapBeeText rather than a bundled typeface.
+        textTheme: Typography.blackMountainView.apply(
+          bodyColor: SnapBeeColors.ink,
+          displayColor: SnapBeeColors.ink,
+        ),
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.white,
-          foregroundColor: AppColors.textPrimary,
+          foregroundColor: SnapBeeColors.ink,
           elevation: 0,
-          centerTitle: false,
+          scrolledUnderElevation: 0,
+          centerTitle: true,
+          titleTextStyle: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+            color: SnapBeeColors.ink,
+          ),
+        ),
+        dividerTheme: const DividerThemeData(
+          color: SnapBeeColors.hairline,
+          thickness: 1,
+          space: 1,
+        ),
+        cardTheme: CardThemeData(
+          color: SnapBeeColors.surface,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(SnapBeeSpacing.rTile),
+          ),
+        ),
+        chipTheme: ChipThemeData(
+          backgroundColor: SnapBeeColors.chipFill,
+          side: BorderSide.none,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(SnapBeeSpacing.rChip),
+          ),
+          labelStyle: SnapBeeText.label,
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primaryOrange,
             foregroundColor: Colors.white,
             elevation: 0,
+            textStyle: const TextStyle(fontWeight: FontWeight.w700),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(SnapBeeSpacing.rField),
             ),
           ),
         ),
@@ -63,9 +97,28 @@ class SnapBeeApp extends StatelessWidget {
           style: FilledButton.styleFrom(
             backgroundColor: AppColors.primaryOrange,
             foregroundColor: Colors.white,
+            textStyle: const TextStyle(fontWeight: FontWeight.w700),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(SnapBeeSpacing.rField),
             ),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.primaryOrange,
+            side: BorderSide(color: AppColors.primaryOrange.withValues(alpha: 0.5)),
+            textStyle: const TextStyle(fontWeight: FontWeight.w700),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(SnapBeeSpacing.rField),
+            ),
+          ),
+        ),
+        snackBarTheme: SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: SnapBeeColors.navy,
+          contentTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(SnapBeeSpacing.rField),
           ),
         ),
       ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:snapbee_customer_app/core/constants/app_colors.dart';
+import 'package:snapbee_customer_app/core/design/snapbee_design.dart';
 
 /// Full-width promotional hero banner shown below the service tabs
 /// ("Everything You Need, Delivered Fast!"). Renders on an orange
@@ -13,6 +14,7 @@ class HeroBannerWidget extends StatelessWidget {
   final String ctaLabel;
   final VoidCallback? onCtaTap;
   final String? mascotImageUrl;
+  final String scriptAccent;
   final int pageCount;
   final int currentPage;
 
@@ -22,7 +24,8 @@ class HeroBannerWidget extends StatelessWidget {
     this.subtitle = 'Groceries, Food, Meat & more\nat your doorstep',
     this.ctaLabel = 'Order Now',
     this.onCtaTap,
-    this.mascotImageUrl,
+    this.mascotImageUrl = SnapBeeMascots.scooter,
+    this.scriptAccent = 'Fast\nFresh\nLocal\nFor You!',
     this.pageCount = 1,
     this.currentPage = 0,
   });
@@ -69,7 +72,14 @@ class HeroBannerWidget extends StatelessWidget {
                       children: [
                         Expanded(
                           flex: 6,
-                          child: Column(
+                          // scaleDown guarantees the headline+subtitle+CTA
+                          // never overflow the fixed 185px banner on a
+                          // narrow viewport or with a larger text scale.
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Column(
+                            mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -127,10 +137,23 @@ class HeroBannerWidget extends StatelessWidget {
                               ),
                             ],
                           ),
+                          ),
                         ),
                         Expanded(
                           flex: 5,
-                          child: _MascotSlot(imageUrl: mascotImageUrl),
+                          child: Row(
+                            children: [
+                              Expanded(child: _MascotSlot(imageUrl: mascotImageUrl)),
+                              SizedBox(
+                                width: 46,
+                                child: Text(
+                                  scriptAccent,
+                                  textAlign: TextAlign.center,
+                                  style: SnapBeeText.script.copyWith(fontSize: 11, color: SnapBeeColors.navy),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -178,7 +201,13 @@ class _MascotSlot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (imageUrl != null) {
-      return Image.asset(imageUrl!, fit: BoxFit.contain);
+      return Image.asset(
+        imageUrl!,
+        fit: BoxFit.contain,
+        errorBuilder: (_, _, _) => const Center(
+          child: Icon(Icons.emoji_nature_rounded, size: 64, color: Colors.black45),
+        ),
+      );
     }
     return const Center(
       child: Icon(Icons.emoji_nature_rounded, size: 64, color: Colors.black45),

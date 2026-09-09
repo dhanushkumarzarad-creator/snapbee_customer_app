@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/design/snapbee_design.dart';
 import '../../data/cart/cart_store.dart';
 import '../../data/repositories/wishlist_repository.dart';
 import '../../widgets/catalog_image.dart';
 import '../home/widgets/product_model.dart';
 import '../cart/cart_screen.dart';
+import 'vendor_store_screen.dart';
 
 /// Full-detail view for a single product — opened from any product card
 /// across the app (trending, category, search, product list). Renders
@@ -306,6 +308,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                               ],
                             ],
                           ),
+                          const SizedBox(height: 4),
+                          Text('Inclusive of all taxes', style: SnapBeeText.caption),
                           if (!product.inStock) ...[
                             const SizedBox(height: 12),
                             Container(
@@ -314,14 +318,79 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                                 vertical: 8,
                               ),
                               decoration: BoxDecoration(
-                                color: theme.colorScheme.errorContainer,
+                                color: SnapBeeColors.dangerFill,
                                 borderRadius: BorderRadius.circular(10),
                               ),
-                              child: Text(
+                              child: const Text(
                                 'Currently out of stock',
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: theme.colorScheme.onErrorContainer,
-                                  fontWeight: FontWeight.w600,
+                                style: TextStyle(color: SnapBeeColors.danger, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 16),
+                          // Delivery info — real Daily Essentials policy, no
+                          // fabricated ETA.
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: SnapBeeColors.infoFill,
+                              borderRadius: BorderRadius.circular(SnapBeeSpacing.rTile),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.local_shipping_rounded, color: SnapBeeColors.info, size: 20),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Fast local delivery', style: SnapBeeText.bodyStrong.copyWith(fontSize: 13)),
+                                      const SizedBox(height: 2),
+                                      Text('Delivery charge is calculated at checkout from your location. Free delivery on orders above ₹199.',
+                                          style: SnapBeeText.caption),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (product.vendorId.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            InkWell(
+                              borderRadius: BorderRadius.circular(SnapBeeSpacing.rTile),
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => VendorStoreScreen(vendorId: product.vendorId),
+                                ),
+                              ),
+                              child: Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: SnapBeeColors.surface,
+                                  borderRadius: BorderRadius.circular(SnapBeeSpacing.rTile),
+                                  border: Border.all(color: SnapBeeColors.hairline),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 38,
+                                      height: 38,
+                                      decoration: BoxDecoration(color: SnapBeeColors.orangeTint, shape: BoxShape.circle),
+                                      child: const Icon(Icons.storefront_rounded, color: SnapBeeColors.orange, size: 19),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text('View Store', style: SnapBeeText.title),
+                                          Text('See more from this seller', style: SnapBeeText.caption),
+                                        ],
+                                      ),
+                                    ),
+                                    const Icon(Icons.chevron_right, color: SnapBeeColors.inkFaint),
+                                  ],
                                 ),
                               ),
                             ),
@@ -340,6 +409,13 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                 onIncrement: () => _changeQuantity(1),
                 onDecrement: () => _changeQuantity(-1),
                 onAddToCart: _addToCart,
+                onBuyNow: () {
+                  _addToCart();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const CartScreen()),
+                  );
+                },
               ),
           ],
         ),
@@ -474,6 +550,7 @@ class _AddToCartBar extends StatelessWidget {
   final VoidCallback onIncrement;
   final VoidCallback onDecrement;
   final VoidCallback onAddToCart;
+  final VoidCallback onBuyNow;
 
   const _AddToCartBar({
     required this.quantity,
@@ -481,68 +558,57 @@ class _AddToCartBar extends StatelessWidget {
     required this.onIncrement,
     required this.onDecrement,
     required this.onAddToCart,
+    required this.onBuyNow,
   });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final total = unitPrice * quantity;
 
-    return DecoratedBox(
+    return Container(
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
+        color: SnapBeeColors.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 12,
-            offset: const Offset(0, -3),
-          ),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, -4)),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-        child: Row(
-          children: [
-            Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: AppColors.primaryOrange),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _StepperButton(icon: Icons.remove, onTap: onDecrement),
-                  SizedBox(
-                    width: 32,
-                    child: Text(
-                      '$quantity',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  _StepperButton(icon: Icons.add, onTap: onIncrement),
-                ],
-              ),
+      child: Row(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: SnapBeeColors.orange),
+              borderRadius: BorderRadius.circular(SnapBeeSpacing.rField),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: FilledButton(
-                onPressed: onAddToCart,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primaryOrange,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _StepperButton(icon: Icons.remove, onTap: onDecrement),
+                SizedBox(
+                  width: 30,
+                  child: Text('$quantity', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800)),
                 ),
-                child: Text(
-                  'Add to Cart • ₹${total.toStringAsFixed(0)}',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
+                _StepperButton(icon: Icons.add, onTap: onIncrement),
+              ],
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: SnapBeeOutlineButton(
+              label: 'Add • ₹${total.toStringAsFixed(0)}',
+              onPressed: onAddToCart,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: SnapBeePrimaryButton(
+              label: 'Buy Now',
+              icon: Icons.flash_on_rounded,
+              onPressed: onBuyNow,
+            ),
+          ),
+        ],
       ),
     );
   }

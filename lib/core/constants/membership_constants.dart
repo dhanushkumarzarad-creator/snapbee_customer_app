@@ -1,11 +1,19 @@
 // ============================================================================
 // membership_constants.dart
 // ----------------------------------------------------------------------------
-// The completed-orders thresholds that define each membership tier. These
-// mirror the thresholds baked into the `trg_customers_membership_tier`
-// database trigger (see database/schema.sql) — the DB is the source of
-// truth for the actual tier, but the app needs the same numbers to render
-// "Progress to next membership" without a round trip.
+// The completed-orders thresholds that define each SnapBee Club tier. These
+// are the APPROVED order-based membership tiers shown across the customer-app
+// reference designs (SnapBee Club + Membership Club Card):
+//
+//   Bronze    — starting / default tier (0 – 9 completed orders)
+//   Silver    — 10 completed orders     (10 – 49)
+//   Gold      — 50 completed orders     (50 – 199)
+//   Platinum  — 200 completed orders    (200+)
+//
+// Only completed orders count; cancelled / refunded / failed orders do not.
+// Tier upgrades happen automatically once the threshold is reached and are
+// never lost once earned. The app uses these numbers to render "progress to
+// next tier" without a round trip.
 // ============================================================================
 
 enum MembershipTier { bronze, silver, gold, platinum }
@@ -43,9 +51,9 @@ class MembershipThresholds {
   MembershipThresholds._();
 
   // Inclusive lower bound of completed orders required for each tier.
-  static const int silverMin = 6;
-  static const int goldMin = 26;
-  static const int platinumMin = 101;
+  static const int silverMin = 10;
+  static const int goldMin = 50;
+  static const int platinumMin = 200;
 
   static MembershipTier tierForCompletedOrders(int completedOrders) {
     if (completedOrders >= platinumMin) return MembershipTier.platinum;

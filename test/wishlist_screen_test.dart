@@ -51,7 +51,7 @@ void main() {
 
     expect(find.text('Product 1'), findsOneWidget);
     expect(find.text('Product 2'), findsOneWidget);
-    expect(find.text('Wishlist (2)'), findsOneWidget);
+    expect(find.text('2 Items'), findsOneWidget);
   });
 
   testWidgets('empty repository shows the empty state', (tester) async {

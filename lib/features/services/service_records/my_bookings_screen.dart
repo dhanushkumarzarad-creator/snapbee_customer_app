@@ -5,6 +5,7 @@ import '../data/services_booking_repository.dart';
 import '../models/service_booking.dart';
 import '../theme/service_colors.dart';
 import '../tracking/booking_detail_screen.dart';
+import 'my_enquiries_screen.dart';
 import 'recurring_plans_screen.dart';
 
 /// Section 5 of the Services spec: a dedicated Services order/history
@@ -74,6 +75,14 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> with SingleTickerPr
         iconTheme: const IconThemeData(color: ServiceColors.textPrimary),
         title: const Text('Service Orders', style: TextStyle(color: ServiceColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.forum_outlined),
+            tooltip: 'My enquiries',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const MyEnquiriesScreen()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.event_repeat_outlined),
             tooltip: 'Recurring plans',

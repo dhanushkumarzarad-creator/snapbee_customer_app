@@ -47,9 +47,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Discounted Rice'), findsOneWidget);
+    expect(find.text('No offers right now'), findsNothing);
+
+    // The premium redesign adds a hero card above the feed, so the Coupons
+    // section can start below the test viewport's fold — scroll it in first.
+    await tester.scrollUntilVisible(
+      find.text('Coupons'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
     expect(find.text('Coupons'), findsOneWidget);
     expect(find.text('SAVE10'), findsOneWidget);
-    expect(find.text('No offers right now'), findsNothing);
   });
 
   testWidgets('shows the honest empty state when the backend has no offers', (tester) async {

@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../core/constants/app_colors.dart';
+import '../../core/design/snapbee_design.dart';
 import '../../data/repositories/product_repository.dart';
 import '../home/widgets/product_card_widget.dart';
 import '../home/widgets/product_model.dart';
@@ -81,73 +81,129 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
+  static const _suggestions = ['Milk', 'Bread', 'Eggs', 'Rice', 'Atta', 'Tomato', 'Onion', 'Bananas', 'Curd', 'Oil'];
+
+  void _applySuggestion(String s) {
+    _controller.text = s;
+    _controller.selection = TextSelection.collapsed(offset: s.length);
+    _onChanged(s);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
-      backgroundColor: theme.colorScheme.surfaceContainerLowest,
-      appBar: AppBar(
-        backgroundColor: AppColors.creamBackground,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_rounded,
-            color: AppColors.textPrimary,
-          ),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-        title: Material(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          elevation: 1,
-          shadowColor: Colors.black26,
-          child: TextField(
-            controller: _controller,
-            focusNode: _focusNode,
-            onChanged: _onChanged,
-            textInputAction: TextInputAction.search,
-            style: const TextStyle(fontSize: 15, color: AppColors.textPrimary),
-            decoration: InputDecoration(
-              hintText: 'Search for products',
-              hintStyle: const TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 14,
+      backgroundColor: SnapBeeColors.scaffold,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Header row: back + wordmark
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 6, SnapBeeSpacing.gutter, 0),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, color: SnapBeeColors.ink),
+                    onPressed: () => Navigator.of(context).maybePop(),
+                  ),
+                  const Expanded(child: SnapBeeWordmark(subtitle: 'Search fresh products near you', center: false)),
+                ],
               ),
-              prefixIcon: const Icon(
-                Icons.search,
-                color: AppColors.textSecondary,
-              ),
-              suffixIcon: _controller.text.isEmpty
-                  ? null
-                  : IconButton(
-                      icon: const Icon(
-                        Icons.close,
-                        color: AppColors.textSecondary,
-                        size: 20,
-                      ),
-                      onPressed: () {
-                        _controller.clear();
-                        _onChanged('');
-                      },
-                    ),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 12),
             ),
-          ),
+            // Search field
+            Padding(
+              padding: const EdgeInsets.fromLTRB(SnapBeeSpacing.gutter, 8, SnapBeeSpacing.gutter, 8),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: SnapBeeColors.surface,
+                  borderRadius: BorderRadius.circular(SnapBeeSpacing.rField),
+                  boxShadow: SnapBeeShadows.soft,
+                ),
+                child: TextField(
+                  controller: _controller,
+                  focusNode: _focusNode,
+                  onChanged: _onChanged,
+                  textInputAction: TextInputAction.search,
+                  style: const TextStyle(fontSize: 15, color: SnapBeeColors.ink),
+                  decoration: InputDecoration(
+                    hintText: 'Search for groceries, food, meat…',
+                    hintStyle: const TextStyle(color: SnapBeeColors.inkFaint, fontSize: 14),
+                    prefixIcon: const Icon(Icons.search, color: SnapBeeColors.inkFaint),
+                    suffixIcon: _controller.text.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close, color: SnapBeeColors.inkFaint, size: 20),
+                            onPressed: () {
+                              _controller.clear();
+                              _onChanged('');
+                            },
+                          ),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(child: _buildBody()),
+          ],
         ),
-        titleSpacing: 0,
       ),
-      body: _buildBody(theme),
     );
   }
 
-  Widget _buildBody(ThemeData theme) {
+  Widget _buildBody() {
     if (_query.trim().isEmpty) {
-      return _CenteredMessage(
-        icon: Icons.search_rounded,
-        title: 'Search SnapBee',
-        message: 'Find groceries, food, meat and more.',
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(SnapBeeSpacing.gutter, 4, SnapBeeSpacing.gutter, 24),
+        children: [
+          Text('Popular searches', style: SnapBeeText.label),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final s in _suggestions)
+                GestureDetector(
+                  onTap: () => _applySuggestion(s),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: SnapBeeColors.surface,
+                      borderRadius: BorderRadius.circular(SnapBeeSpacing.rPill),
+                      border: Border.all(color: SnapBeeColors.hairline),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.search, size: 14, color: SnapBeeColors.inkFaint),
+                        const SizedBox(width: 6),
+                        Text(s, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: SnapBeeColors.inkSoft)),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+            decoration: BoxDecoration(gradient: SnapBeeColors.mintGradient, borderRadius: BorderRadius.circular(SnapBeeSpacing.rCard)),
+            child: Row(
+              children: [
+                const SnapBeeMascotImage(asset: SnapBeeMascots.search, height: 56),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Fresh for a Healthier You!', style: SnapBeeText.h2.copyWith(color: const Color(0xFF1F7A3D), fontSize: 15)),
+                      Text('Pure • Nutritious • From trusted stores', style: SnapBeeText.caption.copyWith(color: const Color(0xFF3C6B4B))),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       );
     }
     if (_isLoading) {
@@ -160,100 +216,55 @@ class _SearchScreenState extends State<SearchScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, size: 48, color: Colors.grey),
+              const Icon(Icons.error_outline, size: 44, color: SnapBeeColors.inkFaint),
               const SizedBox(height: 12),
-              Text(
-                'Could not search products.\n$_errorMessage',
-                textAlign: TextAlign.center,
-              ),
+              Text('Could not search products.', style: SnapBeeText.body, textAlign: TextAlign.center),
               const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: () => _search(_query),
-                child: const Text('Retry'),
-              ),
+              SnapBeeOutlineButton(label: 'Retry', expand: false, onPressed: () => _search(_query)),
             ],
           ),
         ),
       );
     }
     if (_results.isEmpty) {
-      return _CenteredMessage(
-        icon: Icons.search_off_rounded,
+      return SnapBeeEmptyState(
+        mascot: SnapBeeMascots.search,
         title: 'No results for "$_query"',
-        message: 'Try a different product name.',
+        message: 'Try a different product name or check nearby stores.',
       );
     }
-    return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 0.68,
-      ),
-      itemCount: _results.length,
-      itemBuilder: (context, index) => ProductCardWidget(
-        product: _results[index],
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) =>
-                ProductDetailsScreen(product: _results[index]),
+    return Column(
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(SnapBeeSpacing.gutter, 4, SnapBeeSpacing.gutter, 8),
+            child: Text.rich(TextSpan(children: [
+              const TextSpan(text: 'Showing results for  ', style: SnapBeeText.label),
+              TextSpan(text: '"$_query"', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: SnapBeeColors.orange)),
+            ])),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _CenteredMessage extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String message;
-
-  const _CenteredMessage({
-    required this.icon,
-    required this.title,
-    required this.message,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 96,
-              height: 96,
-              decoration: BoxDecoration(
-                color: AppColors.primaryOrangeLight,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, size: 44, color: AppColors.primaryOrange),
+        Expanded(
+          child: GridView.builder(
+            padding: const EdgeInsets.fromLTRB(SnapBeeSpacing.gutter, 0, SnapBeeSpacing.gutter, 20),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 0.66,
             ),
-            const SizedBox(height: 20),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
+            itemCount: _results.length,
+            itemBuilder: (context, index) => ProductCardWidget(
+              product: _results[index],
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => ProductDetailsScreen(product: _results[index])),
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../core/constants/app_colors.dart';
 import '../../core/constants/membership_constants.dart';
+import '../../core/design/snapbee_design.dart';
 import '../../data/repositories/customer_repository.dart';
 import '../../data/repositories/notification_repository.dart';
 import '../../data/repositories/order_repository.dart';
+import '../../data/repositories/wishlist_repository.dart';
 import '../../models/customer_model.dart';
 import '../notification/notification_screen.dart';
 import '../orders/orders_screen.dart';
@@ -12,8 +13,29 @@ import '../wishlist/wishlist_screen.dart';
 import '../order_history/order_history_screen.dart';
 import '../order_history/models/order_history_model.dart';
 import '../../features/booking_history/presentation/booking_history_screen.dart';
+import '../../features/profile/about_snapbee_screen.dart';
+import '../../features/profile/coupons_screen.dart';
+import '../../features/profile/help_support_screen.dart';
+import '../../features/profile/membership_card_screen.dart';
+import '../../features/profile/profile_details_screen.dart';
+import '../../features/profile/referrals_screen.dart';
+import '../../features/profile/rewards_screen.dart';
+import '../../features/profile/saved_addresses_screen.dart';
+import '../../features/profile/settings_screen.dart';
+import '../../features/profile/snapbee_club_screen.dart';
+import '../../features/profile/wallet_screen.dart';
+import '../../features/services/services_main_screen.dart';
+import '../../features/travel/home/travel_main_screen.dart';
+import '../../features/entertainment/home/entertainment_main_screen.dart';
+import '../../features/ecommerce/home/ecommerce_main_screen.dart';
 import 'widgets/membership_card.dart';
 
+/// The COMMON Profile experience shared by every vertical's shell. Redesigned
+/// to the approved reference (screens 29 / 35) — premium hero, SnapBee Club
+/// card, live stat row, a Shop & Explore rail and a sectioned account menu —
+/// while keeping every existing data path untouched: the real customer
+/// fetch, the real unread-notification count, the real order-history load
+/// and the real `auth.signOut()`.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -28,12 +50,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   CustomerModel? _customer;
   bool _loadingCustomer = true;
   int _unreadNotifications = 0;
+  int _wishlistCount = 0;
 
   @override
   void initState() {
     super.initState();
     _loadCustomer();
     _loadUnreadCount();
+    _loadWishlistCount();
   }
 
   /// Profile previously showed a hardcoded name/phone/member-ID/tier/wallet
@@ -72,10 +96,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  void _comingSoon(String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$feature is coming soon.')),
-    );
+  Future<void> _loadWishlistCount() async {
+    try {
+      final items = await WishlistRepository(Supabase.instance.client).fetchWishlist();
+      if (!mounted) return;
+      setState(() => _wishlistCount = items.length);
+    } catch (_) {
+      // Leave at 0.
+    }
   }
 
   Future<void> _logout() async {
@@ -103,9 +131,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await Supabase.instance.client.auth.signOut();
   }
 
-  /// Fetches this customer's real order history so Profile's "History"
-  /// quick action shows actual account data (OrderHistoryScreen renders an
-  /// empty state, never sample data, when the list is empty).
+  /// Fetches this customer's real order history so Profile's history entry
+  /// shows actual account data (OrderHistoryScreen renders an empty state,
+  /// never sample data, when the list is empty).
   Future<void> _openOrderHistory(BuildContext context) async {
     List<OrderHistoryModel> history = const [];
     try {
@@ -122,555 +150,337 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  void _push(Widget screen) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => screen))
+        .then((_) => _loadUnreadCount());
+  }
+
+  void _openVertical(int index) {
+    switch (index) {
+      case 0:
+        Navigator.of(context).popUntil((r) => r.isFirst);
+        break;
+      case 1:
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const ServicesMainScreen()));
+        break;
+      case 2:
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const TravelMainScreen()));
+        break;
+      case 3:
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const EntertainmentMainScreen()));
+        break;
+      case 4:
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const EcommerceMainScreen()));
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final customer = _customer;
-    final tier = customer?.membershipTier ?? MembershipTier.bronze;
+    final tier = customer != null
+        ? MembershipThresholds.tierForCompletedOrders(customer.completedOrders)
+        : MembershipTier.bronze;
     final completedOrders = customer?.completedOrders ?? 0;
-    final displayName = customer?.fullName ?? (_loadingCustomer ? 'Loading…' : 'SnapBee Customer');
+    final displayName =
+        customer?.fullName ?? (_loadingCustomer ? 'Loading…' : 'SnapBee Customer');
     final displayPhone = customer != null ? '+91 ${customer.mobileNumber}' : '—';
-    final displayMemberId = customer?.customerCode ?? '—';
+    final displayEmail = customer?.email ?? '';
     final walletBalance = customer?.walletBalance ?? 0;
+    final rewardPoints = customer?.rewardPoints ?? 0;
 
     return Scaffold(
-      backgroundColor: const Color(0xffF6F6F6),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        title: const Text(
-          "My Profile",
-          style: TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        leading: const Icon(Icons.menu, color: Colors.black),
-        actions: [
-          Stack(
-            children: [
-              IconButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const NotificationScreen(),
-                    ),
-                  ).then((_) => _loadUnreadCount());
-                },
-                icon: const Icon(
-                  Icons.notifications_none,
-                  color: Colors.black,
-                ),
-              ),
-              if (_unreadNotifications > 0)
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: AppColors.primaryOrange,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      _unreadNotifications > 9 ? '9+' : '$_unreadNotifications',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          )
-        ],
-      ),
-      body: SingleChildScrollView(
-        child: Column(
+      backgroundColor: SnapBeeColors.scaffold,
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          padding: const EdgeInsets.only(bottom: 30),
           children: [
-            const SizedBox(height: 12),
-
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: .05),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
+            // ---- Header ---------------------------------------------------
+            Padding(
+              padding: const EdgeInsets.fromLTRB(SnapBeeSpacing.gutter, 10, 8, 4),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: SnapBeeWordmark(subtitle: 'Daily Essentials', center: false),
+                  ),
+                  Stack(
+                    children: [
+                      IconButton(
+                        onPressed: () => _push(const NotificationScreen()),
+                        icon: const Icon(Icons.notifications_none_rounded, color: SnapBeeColors.ink),
+                      ),
+                      if (_unreadNotifications > 0)
+                        Positioned(
+                          right: 6,
+                          top: 6,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(color: SnapBeeColors.danger, shape: BoxShape.circle),
+                            child: Text(
+                              _unreadNotifications > 9 ? '9+' : '$_unreadNotifications',
+                              style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  IconButton(
+                    onPressed: () => _push(SettingsScreen(
+                      customer: _customer,
+                      onEditProfile: () => _push(ProfileDetailsScreen(customer: _customer)),
+                    )),
+                    icon: const Icon(Icons.settings_outlined, color: SnapBeeColors.ink),
                   ),
                 ],
+              ),
+            ),
+
+            // ---- Profile hero -------------------------------------------
+            Container(
+              margin: const EdgeInsets.fromLTRB(SnapBeeSpacing.gutter, 4, SnapBeeSpacing.gutter, 8),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: SnapBeeColors.surface,
+                borderRadius: BorderRadius.circular(SnapBeeSpacing.rCard),
+                boxShadow: SnapBeeShadows.card,
               ),
               child: Row(
                 children: [
                   Stack(
                     children: [
                       Container(
-                        width: 76,
-                        height: 76,
-                        padding: const EdgeInsets.all(3),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              AppColors.primaryOrange,
-                              AppColors.primaryOrangeDark,
-                            ],
-                          ),
-                        ),
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Color(0xFF20243A),
-                          ),
-                          child: const Icon(
-                            Icons.person,
-                            color: Colors.white,
-                            size: 40,
-                          ),
-                        ),
+                        width: 64,
+                        height: 64,
+                        decoration: const BoxDecoration(shape: BoxShape.circle, color: SnapBeeColors.navy),
+                        clipBehavior: Clip.antiAlias,
+                        child: (customer?.profilePhotoUrl != null && customer!.profilePhotoUrl!.isNotEmpty)
+                            ? Image.network(customer.profilePhotoUrl!, fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => const Icon(Icons.person_rounded, color: Colors.white, size: 32))
+                            : const Icon(Icons.person_rounded, color: Colors.white, size: 32),
                       ),
                       Positioned(
                         right: 0,
                         bottom: 0,
                         child: Container(
-                          padding: const EdgeInsets.all(6),
+                          padding: const EdgeInsets.all(5),
                           decoration: BoxDecoration(
-                            color: AppColors.primaryOrange,
+                            color: SnapBeeColors.orange,
                             shape: BoxShape.circle,
                             border: Border.all(color: Colors.white, width: 2),
                           ),
-                          child: const Icon(
-                            Icons.edit,
-                            size: 13,
-                            color: Colors.white,
-                          ),
+                          child: const Icon(Icons.camera_alt_rounded, size: 11, color: Colors.white),
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          displayName,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF9C5A28), Color(0xFFC9793C)],
-                            ),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            "${_tierEmoji(tier)} ${tier.label} Bee",
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: .2,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          displayPhone,
-                          style: TextStyle(
-                              color: AppColors.textSecondary, fontSize: 13),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          "Member ID : $displayMemberId",
-                          style: TextStyle(
-                              color: AppColors.textSecondary, fontSize: 12.5),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 15),
-
-            MembershipCard(
-              tier: tier,
-              totalOrders: completedOrders,
-              benefitsCount: 3,
-              ordersToNextTier: MembershipThresholds.ordersToNextTier(completedOrders),
-              progress: MembershipThresholds.progressWithinTier(completedOrders),
-            ),
-            const SizedBox(height: 18),
-
-            // Wallet Card
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: .05),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    height: 55,
-                    width: 55,
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryOrangeLight,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Icon(
-                      Icons.account_balance_wallet,
-                      color: AppColors.primaryOrange,
-                      size: 30,
-                    ),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          "SnapBee Wallet",
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 17,
-                            color: AppColors.textPrimary,
-                          ),
+                        Row(
+                          children: [
+                            Flexible(child: Text(displayName, style: SnapBeeText.h2, overflow: TextOverflow.ellipsis)),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.verified_rounded, size: 15, color: SnapBeeColors.info),
+                          ],
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          "Balance ₹${walletBalance.toStringAsFixed(2)}",
-                          style: TextStyle(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
+                        const SizedBox(height: 3),
+                        Text(displayPhone, style: SnapBeeText.caption),
+                        if (displayEmail.isNotEmpty)
+                          Text(displayEmail, style: SnapBeeText.caption, overflow: TextOverflow.ellipsis),
                       ],
                     ),
                   ),
-                  ElevatedButton(
-                    onPressed: () => _comingSoon('Adding money to your wallet'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryOrange,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: const Text("Add Money"),
+                  SnapBeePillButton(
+                    label: 'Edit',
+                    icon: Icons.edit_rounded,
+                    onTap: () => _push(ProfileDetailsScreen(customer: _customer)),
                   ),
                 ],
               ),
             ),
 
-            const SizedBox(height: 18),
-
+            // ---- SnapBee Club card -------------------------------------
+            MembershipCard(
+              tier: tier,
+              totalOrders: completedOrders,
+              benefitsCount: 4,
+              ordersToNextTier: MembershipThresholds.ordersToNextTier(completedOrders),
+              progress: MembershipThresholds.progressWithinTier(completedOrders),
+            ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.fromLTRB(SnapBeeSpacing.gutter, 8, SnapBeeSpacing.gutter, 2),
               child: Row(
-                children: const [
-                  Text(
-                    "Quick Actions",
-                    style: TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: GridView.count(
-                crossAxisCount: 4,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
                 children: [
-                  _quickAction(
-                    Icons.local_offer,
-                    "Coupons",
-                    AppColors.primaryOrange,
-                    onTap: () => _comingSoon('Coupons'),
+                  Expanded(
+                    child: Text('SnapBee Club · ${tier.label} member', style: SnapBeeText.label),
                   ),
-                  _quickAction(
-                    Icons.card_giftcard,
-                    "Rewards",
-                    Colors.green,
-                    onTap: () => _comingSoon('Rewards'),
-                  ),
-                  _quickAction(
-                    Icons.people,
-                    "Refer",
-                    Colors.blue,
-                    onTap: () => _comingSoon('Referrals'),
-                  ),
-                  _quickAction(
-                    Icons.support_agent,
-                    "Support",
-                    Colors.red,
-                    onTap: () => _comingSoon('Support'),
-                  ),
-                  _quickAction(
-                    Icons.location_on,
-                    "Address",
-                    Colors.deepPurple,
-                    onTap: () => _comingSoon('Saved addresses'),
-                  ),
-                  _quickAction(
-                    Icons.favorite,
-                    "Wishlist",
-                    Colors.pink,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const WishlistScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  _quickAction(
-                    Icons.history,
-                    "History",
-                    Colors.teal,
-                    onTap: () => _openOrderHistory(context),
-                  ),
-                  _quickAction(
-                    Icons.more_horiz,
-                    "More",
-                    Colors.grey,
-                    onTap: () => _comingSoon('More options'),
+                  InkWell(
+                    onTap: () => _push(SnapBeeClubScreen(customer: _customer)),
+                    child: Row(
+                      children: const [
+                        Text('View Benefits', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: SnapBeeColors.orange)),
+                        Icon(Icons.chevron_right, size: 16, color: SnapBeeColors.orange),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 8),
 
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: .05),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: Material(
-                type: MaterialType.transparency,
-                borderRadius: BorderRadius.circular(18),
-                clipBehavior: Clip.antiAlias,
-                child: Column(
-                  children: [
-                    _menuTile(
-                      Icons.shopping_bag_outlined,
-                      "My Orders",
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const OrdersScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    const Divider(height: 1),
-                    _menuTile(
-                      Icons.receipt_long_outlined,
-                      "Booking History",
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const BookingHistoryScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    const Divider(height: 1),
-                    _menuTile(
-                      Icons.favorite_border,
-                      "Wishlist",
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const WishlistScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    const Divider(height: 1),
-                    _menuTile(
-                      Icons.location_on_outlined,
-                      "Saved Addresses",
-                      onTap: () => _comingSoon('Saved addresses'),
-                    ),
-                    const Divider(height: 1),
-                    _menuTile(
-                      Icons.account_balance_wallet_outlined,
-                      "Payments",
-                      onTap: () => _comingSoon('Payment methods'),
-                    ),
-                    const Divider(height: 1),
-                    _menuTile(
-                      Icons.notifications_outlined,
-                      "Notifications",
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const NotificationScreen(),
-                          ),
-                        ).then((_) => _loadUnreadCount());
-                      },
-                    ),
-                    const Divider(height: 1),
-                    _menuTile(
-                      Icons.settings_outlined,
-                      "Settings",
-                      onTap: () => _comingSoon('Settings'),
-                    ),
-                    const Divider(height: 1),
-                    _menuTile(
-                      Icons.help_outline,
-                      "Help & Support",
-                      onTap: () => _comingSoon('Help & Support'),
-                    ),
-                    const Divider(height: 1),
-                    _menuTile(
-                      Icons.info_outline,
-                      "About SnapBee",
-                      onTap: () => _comingSoon('About SnapBee'),
-                    ),
-                  ],
+            // ---- Live stat row ---------------------------------------
+            SnapBeeStatRow(
+              stats: [
+                SnapBeeStat(
+                  icon: Icons.shopping_bag_rounded,
+                  value: '$completedOrders',
+                  label: 'Completed Orders',
+                  color: SnapBeeColors.orange,
+                  onTap: () => _push(const OrdersScreen()),
                 ),
+                SnapBeeStat(
+                  icon: Icons.star_rounded,
+                  value: '$rewardPoints',
+                  label: 'Reward Points',
+                  color: SnapBeeColors.star,
+                  onTap: () => _push(RewardsScreen(customer: _customer)),
+                ),
+                SnapBeeStat(
+                  icon: Icons.account_balance_wallet_rounded,
+                  value: '₹${walletBalance.toStringAsFixed(0)}',
+                  label: 'Wallet Balance',
+                  color: SnapBeeColors.success,
+                  onTap: () => _push(WalletScreen(customer: _customer)),
+                ),
+                SnapBeeStat(
+                  icon: Icons.favorite_rounded,
+                  value: '$_wishlistCount',
+                  label: 'Wishlist Items',
+                  color: SnapBeeColors.danger,
+                  onTap: () => _push(const WishlistScreen()),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+
+            // ---- Shop & Explore ---------------------------------------
+            const SnapBeeSectionHeader(title: 'Shop & Explore', actionLabel: null),
+            Padding(
+              padding: SnapBeeSpacing.screenH,
+              child: Row(
+                children: [
+                  _explore(0, 'Daily\nEssentials', Icons.storefront_rounded, SnapBeeColors.pastelMint, SnapBeeColors.success),
+                  _explore(1, 'Services', Icons.handyman_rounded, const Color(0xFFE3F6EE), const Color(0xFF0E9F6E)),
+                  _explore(2, 'Travel', Icons.flight_rounded, const Color(0xFFE6EEFF), const Color(0xFF2563EB)),
+                  _explore(3, 'Entertain\nment', Icons.confirmation_num_rounded, const Color(0xFFFCE7EF), const Color(0xFFD6336C)),
+                  _explore(4, 'E-Commerce', Icons.shopping_cart_rounded, const Color(0xFFF0E9FE), const Color(0xFF7C3AED)),
+                ],
               ),
             ),
+            const SizedBox(height: 4),
 
-            const SizedBox(height: 20),
+            // ---- My Account menu --------------------------------------
+            SnapBeeMenuCard(
+              sectionTitle: 'My Account',
+              items: [
+                SnapBeeMenuItem(icon: Icons.person_rounded, title: 'Personal Details', color: SnapBeeColors.orange, onTap: () => _push(ProfileDetailsScreen(customer: _customer))),
+                SnapBeeMenuItem(icon: Icons.workspace_premium_rounded, title: 'SnapBee Club', color: SnapBeeColors.gold, onTap: () => _push(MembershipCardScreen(customer: _customer))),
+                SnapBeeMenuItem(icon: Icons.account_balance_wallet_rounded, title: 'Wallet', subtitle: '₹${walletBalance.toStringAsFixed(2)}', color: SnapBeeColors.platinum, onTap: () => _push(WalletScreen(customer: _customer))),
+                SnapBeeMenuItem(icon: Icons.local_offer_rounded, title: 'Coupons', color: SnapBeeColors.danger, onTap: () => _push(const CouponsScreen())),
+                SnapBeeMenuItem(icon: Icons.star_rounded, title: 'Rewards', subtitle: '$rewardPoints points', color: SnapBeeColors.star, onTap: () => _push(RewardsScreen(customer: _customer))),
+                SnapBeeMenuItem(icon: Icons.group_add_rounded, title: 'Referrals', color: SnapBeeColors.info, onTap: () => _push(ReferralsScreen(customer: _customer))),
+                SnapBeeMenuItem(icon: Icons.location_on_rounded, title: 'Saved Addresses', color: SnapBeeColors.success, onTap: () => _push(const SavedAddressesScreen())),
+                SnapBeeMenuItem(icon: Icons.notifications_rounded, title: 'Notifications', color: SnapBeeColors.orange, onTap: () => _push(const NotificationScreen())),
+                SnapBeeMenuItem(icon: Icons.settings_rounded, title: 'Settings', color: SnapBeeColors.inkSoft, onTap: () => _push(SettingsScreen(customer: _customer, onEditProfile: () => _push(ProfileDetailsScreen(customer: _customer))))),
+                SnapBeeMenuItem(icon: Icons.support_agent_rounded, title: 'Help & Support', color: SnapBeeColors.info, onTap: () => _push(const HelpSupportScreen())),
+              ],
+            ),
+
+            SnapBeeMenuCard(
+              sectionTitle: 'Activity',
+              items: [
+                SnapBeeMenuItem(icon: Icons.receipt_long_rounded, title: 'My Orders', subtitle: 'Track, reorder', color: SnapBeeColors.orange, onTap: () => _push(const OrdersScreen())),
+                SnapBeeMenuItem(icon: Icons.event_note_rounded, title: 'Booking History', subtitle: 'Services, Travel, Entertainment', color: SnapBeeColors.info, onTap: () => _push(const BookingHistoryScreen())),
+                SnapBeeMenuItem(icon: Icons.history_rounded, title: 'Order History', color: SnapBeeColors.success, onTap: () => _openOrderHistory(context)),
+                SnapBeeMenuItem(icon: Icons.favorite_rounded, title: 'Wishlist', subtitle: '$_wishlistCount saved', color: SnapBeeColors.danger, onTap: () => _push(const WishlistScreen())),
+              ],
+            ),
+
+            SnapBeeCard(
+              margin: const EdgeInsets.fromLTRB(SnapBeeSpacing.gutter, 14, SnapBeeSpacing.gutter, 6),
+              onTap: () => _push(const AboutSnapBeeScreen()),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(color: SnapBeeColors.orangeTint, shape: BoxShape.circle),
+                    child: const Icon(Icons.info_rounded, color: SnapBeeColors.orange, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('About SnapBee', style: SnapBeeText.title),
+                        const SizedBox(height: 2),
+                        Text('Know more about our mission, features and policies.', style: SnapBeeText.caption),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, color: SnapBeeColors.inkFaint),
+                ],
+              ),
+            ),
 
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _logout,
-                  icon: const Icon(Icons.logout),
-                  label: const Text("Logout"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                ),
+              padding: const EdgeInsets.fromLTRB(SnapBeeSpacing.gutter, 12, SnapBeeSpacing.gutter, 4),
+              child: SnapBeeOutlineButton(
+                label: 'Logout',
+                icon: Icons.logout_rounded,
+                color: SnapBeeColors.danger,
+                onPressed: _logout,
               ),
             ),
 
-            const SizedBox(height: 30),
+            const SnapBeePromoFooter(
+              title: 'Good Food. Better Life.',
+              subtitle: 'Thank you for being a part of SnapBee!',
+              scriptAccent: 'Together for a\nBetter Tomorrow!',
+            ),
           ],
         ),
       ),
     );
   }
 
-  static String _tierEmoji(MembershipTier tier) {
-    switch (tier) {
-      case MembershipTier.bronze:
-        return '🥉';
-      case MembershipTier.silver:
-        return '🥈';
-      case MembershipTier.gold:
-        return '🥇';
-      case MembershipTier.platinum:
-        return '💎';
-    }
-  }
-
-  static Widget _menuTile(
-    IconData icon,
-    String title, {
-    VoidCallback? onTap,
-  }) {
-    return ListTile(
-      leading: Icon(icon, color: AppColors.primaryOrange),
-      title: Text(title, style: const TextStyle(color: AppColors.textPrimary)),
-      trailing: Icon(Icons.chevron_right, color: AppColors.textSecondary),
-      onTap: onTap,
-    );
-  }
-
-  static Widget _quickAction(
-    IconData icon,
-    String title,
-    Color color, {
-    VoidCallback? onTap,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: .04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+  Widget _explore(int index, String label, IconData icon, Color fill, Color color) {
+    return Expanded(
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircleAvatar(
-              radius: 22,
-              backgroundColor: color.withValues(alpha: .12),
-              child: Icon(icon, color: color),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12),
-            ),
-          ],
+        borderRadius: BorderRadius.circular(SnapBeeSpacing.rTile),
+        onTap: () => _openVertical(index),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 6),
+          child: Column(
+            children: [
+              Container(
+                height: 52,
+                width: double.infinity,
+                decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(14)),
+                child: Icon(icon, color: color, size: 22),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                label,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: SnapBeeColors.ink, height: 1.1),
+              ),
+            ],
+          ),
         ),
       ),
     );

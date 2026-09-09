@@ -19,6 +19,7 @@ import 'package:printing/printing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../constants/app_colors.dart';
+import '../design/snapbee_design.dart';
 import 'invoice.dart';
 import 'invoice_delivery.dart';
 import 'invoice_pdf.dart';
@@ -124,11 +125,9 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: Text(widget.titleOverride ?? 'Invoice'),
-      ),
-      body: SafeArea(child: _body()),
+      backgroundColor: SnapBeeColors.scaffold,
+      appBar: SnapBeeAppBar(subtitle: widget.titleOverride ?? 'Invoice / Bill'),
+      body: SafeArea(top: false, child: _body()),
       bottomNavigationBar: _invoice == null ? null : _actionBar(),
     );
   }

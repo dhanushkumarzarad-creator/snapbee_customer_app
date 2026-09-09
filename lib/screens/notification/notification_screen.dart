@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/design/snapbee_design.dart';
 import '../../data/repositories/notification_repository.dart';
 import 'notification_card.dart';
 import 'notification_model.dart';
@@ -121,49 +122,37 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final grouped = _groupByBucket();
     final bool isEmpty = _items.isEmpty;
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.surfaceContainerLowest,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          tooltip: 'Back',
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-        title: const Text(
-          'Notifications',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-        centerTitle: false,
-        scrolledUnderElevation: 1,
-        actions: [
-          if (!isEmpty)
-            TextButton(
-              onPressed: _hasUnread ? _markAllAsRead : null,
-              child: Text(
-                'Mark all as read',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: _hasUnread
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurfaceVariant.withValues(
-                          alpha: 0.5,
-                        ),
+      backgroundColor: SnapBeeColors.scaffold,
+      appBar: SnapBeeAppBar(
+        subtitle: 'Daily Essentials',
+        trailing: (!isEmpty && _hasUnread)
+            ? Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: SnapBeePillButton(
+                  label: 'Mark all read',
+                  icon: Icons.done_all_rounded,
+                  onTap: _markAllAsRead,
                 ),
-              ),
-            ),
-        ],
+              )
+            : null,
       ),
       body: isEmpty
           ? const _EmptyState()
           : RefreshIndicator(
               onRefresh: widget.onRefresh ?? (_repo != null ? _loadReal : () async {}),
               child: ListView(
-                padding: const EdgeInsets.only(top: 8, bottom: 24),
+                padding: const EdgeInsets.only(top: 4, bottom: 24),
                 children: [
+                  const SnapBeePageHeader(
+                    icon: Icons.notifications_rounded,
+                    title: 'Notifications',
+                    subtitle: 'Stay updated with your orders, offers and more',
+                  ),
+                  const SizedBox(height: 4),
                   ..._buildSection(
                     NotificationBucket.today,
                     grouped[NotificationBucket.today]!,
@@ -235,47 +224,10 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 96,
-              height: 96,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primaryContainer.withValues(
-                  alpha: 0.5,
-                ),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.notifications_none_rounded,
-                size: 48,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'No notifications yet',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Updates about your orders, offers and rewards\nwill show up here.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                height: 1.4,
-              ),
-            ),
-          ],
-        ),
-      ),
+    return const SnapBeeEmptyState(
+      mascot: SnapBeeMascots.notification,
+      title: 'No notifications yet',
+      message: 'Updates about your orders, offers and rewards will show up here.',
     );
   }
 }

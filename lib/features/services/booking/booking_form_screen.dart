@@ -54,6 +54,12 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   double? _lat;
   double? _lng;
 
+  /// Pickup & Drop only - the drop-off coordinate/address, kept separate
+  /// from the pickup location (never collapsed into one).
+  double? _dropLat;
+  double? _dropLng;
+  final _dropAddressController = TextEditingController();
+
   DateTime? _preferredDate;
   String _timeSlot = 'morning';
   bool _isEmergency = false;
@@ -87,6 +93,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   void dispose() {
     _addressController.dispose();
     _notesController.dispose();
+    _dropAddressController.dispose();
     super.dispose();
   }
 
@@ -121,6 +128,51 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
       _lng = picked.longitude;
       if (picked.address.isNotEmpty) _addressController.text = picked.address;
     });
+  }
+
+  bool get _isPickupDrop => widget.method?.methodCode == 'pickup_and_drop';
+
+  Future<void> _openDropPicker() async {
+    final picked = await Navigator.of(context).push<PickedLocation>(
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initial: (_dropLat == null || _dropLng == null)
+              ? null
+              : PickedLocation(
+                  latitude: _dropLat!, longitude: _dropLng!, address: _dropAddressController.text.trim()),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _dropLat = picked.latitude;
+      _dropLng = picked.longitude;
+      if (picked.address.isNotEmpty) _dropAddressController.text = picked.address;
+    });
+  }
+
+  /// Structured, server-validated method-specific answers -> p_method_intake
+  /// on create_service_booking. Everything the method fields collected,
+  /// plus Pickup & Drop's separate drop location and Hybrid's chosen
+  /// component under the key the RPC validates.
+  Map<String, dynamic> _buildMethodIntake() {
+    final intake = <String, dynamic>{
+      for (final e in _methodIntake.entries)
+        if (e.value != null && e.value.toString().trim().isNotEmpty) e.key: e.value,
+    };
+    if (_isPickupDrop) {
+      final dropAddr = _dropAddressController.text.trim();
+      if (dropAddr.isNotEmpty) intake['drop_address'] = dropAddr;
+      if (_dropLat != null && _dropLng != null) {
+        intake['drop_lat'] = _dropLat;
+        intake['drop_lng'] = _dropLng;
+      }
+    }
+    if (widget.method?.methodCode == 'hybrid') {
+      final part = (_methodIntake['first_part'] ?? _methodIntake['component'])?.toString();
+      if (part != null && part.isNotEmpty) intake['component'] = part;
+    }
+    return intake;
   }
 
   Future<void> _pickDate() async {
@@ -230,6 +282,29 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     });
 
     try {
+      // Lead Generation -> a real enquiry record, not a priced booking.
+      if (widget.method?.methodCode == 'lead_generation') {
+        await _repo.submitServiceLead(
+          serviceId: widget.service.id,
+          categoryId: widget.service.categoryId,
+          methodId: widget.method!.methodId,
+          vendorMethodConfigId: widget.method!.configId,
+          requirement: (_methodIntake['requirement'] ?? _notesController.text).toString().trim(),
+          contactPhone: (_methodIntake['contact_phone'] ?? '').toString().trim(),
+          contactEmail: (_methodIntake['contact_email'] ?? '').toString().trim().isEmpty
+              ? null
+              : _methodIntake['contact_email'].toString().trim(),
+          preferredTime: _timeSlot,
+          address: _addressController.text.trim().isEmpty ? null : _addressController.text.trim(),
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enquiry sent - the provider will contact you.')),
+        );
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MyBookingsScreen()));
+        return;
+      }
+
       List<String>? mediaUrls;
       if (_isEmergency) {
         final url = await _uploadEmergencyPhoto();
@@ -258,6 +333,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
         idempotencyKey: _idempotencyKey,
         vendorId: widget.method?.vendorId,
         vendorMethodConfigId: widget.method?.configId,
+        methodIntake: _buildMethodIntake(),
       );
       if (_isRecurring && !_isEmergency) {
         try {
@@ -429,6 +505,42 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
                   ? 'Set location on map'
                   : 'Add a location (optional)'),
             ),
+          ],
+
+          if (_isPickupDrop) ...[
+            const SizedBox(height: 20),
+            const Text('Drop-off address *', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _dropAddressController,
+              maxLines: 2,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: 'Where should the item be returned?',
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (_dropLat != null && _dropLng != null)
+              Row(children: [
+                const Icon(Icons.check_circle, size: 16, color: Colors.green),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text('${_dropLat!.toStringAsFixed(5)}, ${_dropLng!.toStringAsFixed(5)}',
+                      style: const TextStyle(color: Colors.green, fontSize: 12)),
+                ),
+                TextButton.icon(
+                  onPressed: _openDropPicker,
+                  icon: const Icon(Icons.edit_location_alt_outlined, size: 16),
+                  label: const Text('Change'),
+                ),
+              ])
+            else
+              OutlinedButton.icon(
+                onPressed: _openDropPicker,
+                icon: const Icon(Icons.map_outlined, size: 18),
+                label: const Text('Set drop-off on map (optional)'),
+              ),
           ],
 
           if (_plan.needsDate) ...[

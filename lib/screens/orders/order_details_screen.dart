@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/design/snapbee_design.dart';
 import '../../core/invoicing/invoice.dart';
 import '../../core/invoicing/invoice_button.dart';
 import '../../core/map/osm_map.dart';
@@ -13,6 +14,8 @@ import '../../data/repositories/order_repository.dart';
 import '../order_history/models/order_history_model.dart';
 import 'order_card.dart' show kSnapBeeOrange;
 import 'order_models.dart';
+import 'rate_reviews_screen.dart';
+import 'reorder_screen.dart';
 
 /// Screen-agnostic view of "an order" — adapts either an active
 /// [OrderModel] (from the Orders tab) or a past [OrderHistoryModel]
@@ -256,30 +259,68 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     setState(() => _partnerLocation = location);
   }
 
+  ({String label, Color color, Color fill, IconData icon}) get _statusChip {
+    if (_order.isCancelled) {
+      return (label: 'Cancelled', color: SnapBeeColors.danger, fill: SnapBeeColors.dangerFill, icon: Icons.cancel_rounded);
+    }
+    switch (_order.timelineStage) {
+      case 3:
+        return (label: 'Delivered', color: SnapBeeColors.success, fill: SnapBeeColors.successFill, icon: Icons.check_circle_rounded);
+      case 2:
+        return (label: 'Out for Delivery', color: SnapBeeColors.info, fill: SnapBeeColors.infoFill, icon: Icons.local_shipping_rounded);
+      case 1:
+        return (label: 'Preparing', color: SnapBeeColors.warn, fill: SnapBeeColors.warnFill, icon: Icons.soup_kitchen_rounded);
+      default:
+        return (label: 'Order Placed', color: SnapBeeColors.orange, fill: SnapBeeColors.orangeTint, icon: Icons.receipt_long_rounded);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final order = _order;
+    final chip = _statusChip;
+    final shortId = order.orderId.length > 8 ? order.orderId.substring(0, 8).toUpperCase() : order.orderId.toUpperCase();
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.surfaceContainerLowest,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          tooltip: 'Back',
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-        title: Text(
-          'Order #${order.orderId}',
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-        scrolledUnderElevation: 1,
+      backgroundColor: SnapBeeColors.scaffold,
+      appBar: SnapBeeAppBar(
+        subtitle: order.timelineStage == 2 && !order.isCancelled ? 'Order Tracking' : 'Order Details',
       ),
       body: SafeArea(
+        top: false,
         child: ListView(
           padding: const EdgeInsets.only(bottom: 24),
           children: [
-            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(SnapBeeSpacing.gutter, 6, SnapBeeSpacing.gutter, 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Order #$shortId', style: SnapBeeText.h1),
+                        const SizedBox(height: 2),
+                        Text(order.etaOrDate, style: SnapBeeText.caption),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(color: chip.fill, borderRadius: BorderRadius.circular(SnapBeeSpacing.rPill)),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(chip.icon, size: 14, color: chip.color),
+                        const SizedBox(width: 5),
+                        Text(chip.label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: chip.color)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
             _Card(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -442,6 +483,41 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                 vertical: InvoiceVertical.dailyEssentials,
                 sourceId: order.orderId,
               ),
+            if (order.isReal)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(SnapBeeSpacing.gutter, 8, SnapBeeSpacing.gutter, 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: SnapBeeOutlineButton(
+                        label: 'Reorder',
+                        icon: Icons.autorenew_rounded,
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ReorderScreen(orderId: order.orderId, storeName: order.storeName),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (order.timelineStage == 3 && !order.isCancelled) ...[
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: SnapBeePrimaryButton(
+                          label: 'Rate Store',
+                          icon: Icons.star_rounded,
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => RateReviewsScreen(orderId: order.orderId, storeName: order.storeName),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             if (_canCancel)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -583,16 +659,13 @@ class _Card extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      margin: const EdgeInsets.symmetric(horizontal: SnapBeeSpacing.gutter, vertical: 6),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-        ),
+        color: SnapBeeColors.surface,
+        borderRadius: BorderRadius.circular(SnapBeeSpacing.rTile),
+        boxShadow: SnapBeeShadows.card,
       ),
       child: child,
     );

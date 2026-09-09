@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/design/snapbee_design.dart';
 import '../../data/cart/cart_store.dart';
 import '../checkout/checkout_screen.dart';
 import 'models/cart_model.dart';
@@ -123,7 +124,6 @@ class _CartScreenState extends State<CartScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final calculator = widget.calculator;
     final itemTotal = calculator.itemTotal(_activeItems);
     final bill = calculator.computeBill(_activeItems);
@@ -132,25 +132,51 @@ class _CartScreenState extends State<CartScreen> {
     final freeDeliveryProgress = calculator.freeDeliveryProgress(itemTotal);
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.surfaceContainerLowest,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          tooltip: 'Back',
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-        title: Text(
-          'My Cart${_activeItems.isNotEmpty ? ' (${_activeItems.length})' : ''}',
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-        scrolledUnderElevation: 1,
-      ),
+      backgroundColor: SnapBeeColors.scaffold,
+      appBar: const SnapBeeAppBar(subtitle: 'Daily Essentials'),
       body: SafeArea(
+        top: false,
         child: _isEmpty
             ? _EmptyCartState(onStartShopping: widget.onStartShopping)
             : ListView(
                 padding: const EdgeInsets.only(bottom: 16),
                 children: [
+                  SnapBeePageHeader(
+                    icon: Icons.shopping_cart_rounded,
+                    title: 'My Cart',
+                    subtitle: 'Review your items and place your order',
+                    trailing: _activeItems.isNotEmpty
+                        ? Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: SnapBeeColors.orangeTint,
+                              borderRadius: BorderRadius.circular(SnapBeeSpacing.rPill),
+                            ),
+                            child: Text('${_activeItems.length} items',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: SnapBeeColors.orangeDark)),
+                          )
+                        : null,
+                  ),
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(SnapBeeSpacing.gutter, 4, SnapBeeSpacing.gutter, 4),
+                    padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+                    decoration: BoxDecoration(gradient: SnapBeeColors.mintGradient, borderRadius: BorderRadius.circular(SnapBeeSpacing.rCard)),
+                    child: Row(
+                      children: [
+                        const SnapBeeMascotImage(asset: SnapBeeMascots.shopping, height: 46),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Good Food, Happier You!', style: SnapBeeText.h2.copyWith(color: const Color(0xFF1F7A3D), fontSize: 15)),
+                              Text('Fresh • Safe • On Time', style: SnapBeeText.caption.copyWith(color: const Color(0xFF3C6B4B))),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   FreeDeliveryProgressBar(
                     progress: freeDeliveryProgress,
                     amountRemaining: freeDeliveryRemaining,
@@ -180,18 +206,32 @@ class _CartScreenState extends State<CartScreen> {
       ),
       bottomNavigationBar: _isEmpty
           ? null
-          : _CheckoutBar(
-              grandTotal: bill.grandTotal,
-              itemCount: _activeItems.fold(0, (sum, i) => sum + i.quantity),
-              onCheckout:
-                  widget.onCheckout ??
-                  () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          CheckoutScreen(items: _activeItems, bill: bill),
-                    ),
-                  ),
+          : SnapBeeBottomBar(
+              leading: SnapBeeTotalLabel(
+                amount: '₹${bill.grandTotal.toStringAsFixed(0)}',
+                caption:
+                    '${_activeItems.fold<int>(0, (s, i) => s + i.quantity)} item'
+                    '${_activeItems.fold<int>(0, (s, i) => s + i.quantity) == 1 ? '' : 's'}',
+              ),
+              actions: [
+                SnapBeeOutlineButton(
+                  label: 'Add More',
+                  icon: Icons.add_rounded,
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+                SnapBeePrimaryButton(
+                  label: 'Checkout',
+                  icon: Icons.arrow_forward_rounded,
+                  onPressed: widget.onCheckout ??
+                      () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  CheckoutScreen(items: _activeItems, bill: bill),
+                            ),
+                          ),
+                ),
+              ],
             ),
     );
   }
@@ -317,145 +357,13 @@ class _EmptyCartState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 110,
-              height: 110,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primaryContainer.withValues(
-                  alpha: 0.5,
-                ),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.shopping_cart_outlined,
-                size: 54,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Your cart is empty',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Looks like you haven\'t added\nanything to your cart yet.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed:
-                  onStartShopping ?? () => Navigator.of(context).maybePop(),
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 14,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text('Start Shopping'),
-            ),
-          ],
-        ),
-      ),
+    return SnapBeeEmptyState(
+      mascot: SnapBeeMascots.emptyCart,
+      title: 'Your cart is empty',
+      message: "Looks like you haven't added anything to your cart yet.",
+      actionLabel: 'Start Shopping',
+      onAction: onStartShopping ?? () => Navigator.of(context).maybePop(),
     );
   }
 }
 
-/// Bottom sticky bar with grand total + item count and the checkout CTA.
-class _CheckoutBar extends StatelessWidget {
-  final double grandTotal;
-  final int itemCount;
-  final VoidCallback? onCheckout;
-
-  const _CheckoutBar({
-    required this.grandTotal,
-    required this.itemCount,
-    this.onCheckout,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return SafeArea(
-      top: false,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 12,
-              offset: const Offset(0, -3),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '\u20b9${grandTotal.toStringAsFixed(0)}',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  Text(
-                    '$itemCount item${itemCount == 1 ? '' : 's'} \u2022 TOTAL',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: FilledButton(
-                onPressed: onCheckout,
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      'Proceed to Checkout',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    SizedBox(width: 6),
-                    Icon(Icons.arrow_forward_rounded, size: 18),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

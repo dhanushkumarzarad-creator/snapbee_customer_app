@@ -12,12 +12,13 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/design/snapbee_design.dart';
 import '../../data/repositories/order_repository.dart';
+import '../../features/profile/help_support_screen.dart';
 import 'order_models.dart';
 import 'order_card.dart';
 import 'order_details_screen.dart';
 import '../cart/cart_screen.dart';
-import '../wishlist/wishlist_screen.dart';
 import '../order_history/order_history_screen.dart';
 import '../order_history/models/order_history_model.dart';
 
@@ -37,6 +38,23 @@ class _OrdersScreenState extends State<OrdersScreen> {
   List<OrderModel> _activeOrders = const [];
   bool _isLoading = true;
   String? _errorMessage;
+
+  // Purely presentational filter over the already-loaded active orders.
+  int _statusFilter = 0; // 0=All 1=Processing 2=Out for Delivery
+  static const _filterLabels = ['All Orders', 'Processing', 'Out for Delivery'];
+
+  List<OrderModel> get _visibleOrders {
+    switch (_statusFilter) {
+      case 1:
+        return _activeOrders
+            .where((o) => o.status == OrderStatus.placed || o.status == OrderStatus.preparing)
+            .toList();
+      case 2:
+        return _activeOrders.where((o) => o.status == OrderStatus.outForDelivery).toList();
+      default:
+        return _activeOrders;
+    }
+  }
 
   @override
   void initState() {
@@ -146,25 +164,48 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final width = MediaQuery.sizeOf(context).width;
     // Responsive content clamp for tablet / web / desktop widths.
     final maxContentWidth = width > 900 ? 720.0 : width;
+    final visible = _visibleOrders;
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.surfaceContainerLowest,
-      appBar: _OrdersAppBar(cartItemCount: widget.cartItemCount, onHistoryTap: _openOrderHistory),
+      backgroundColor: SnapBeeColors.scaffold,
+      appBar: SnapBeeAppBar(
+        subtitle: 'Daily Essentials',
+        showBack: Navigator.of(context).canPop(),
+        trailing: Padding(
+          padding: const EdgeInsets.only(right: 4),
+          child: _CartIconWithBadge(count: widget.cartItemCount),
+        ),
+      ),
       body: SafeArea(
+        top: false,
         child: Center(
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: maxContentWidth),
             child: RefreshIndicator(
-              color: kSnapBeeOrange,
+              color: SnapBeeColors.orange,
               onRefresh: _loadActiveOrders,
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 24),
                 children: [
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 6),
+                  const SnapBeeHeroCard(
+                    titleTop: 'Your Orders',
+                    titleAccent: 'Good Food Brings Happiness!',
+                    subtitle: 'Thank you for choosing SnapBee!',
+                    mascot: SnapBeeMascots.orders,
+                    scriptAccent: 'Local Orders\nHappier Lives!',
+                  ),
+                  const SizedBox(height: 4),
+                  SnapBeeFilterChips(
+                    labels: _filterLabels,
+                    selectedIndex: _statusFilter,
+                    icons: const [Icons.list_rounded, Icons.schedule_rounded, Icons.local_shipping_rounded],
+                    onSelected: (i) => setState(() => _statusFilter = i),
+                  ),
+                  const SizedBox(height: 6),
                   _SectionHeader(
                     title: 'Active Orders',
                     actionLabel: 'History',
@@ -181,10 +222,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       message: _errorMessage!,
                       onRetry: _loadActiveOrders,
                     )
-                  else if (_activeOrders.isEmpty)
+                  else if (visible.isEmpty)
                     const _EmptyOrdersState()
                   else
-                    ..._activeOrders.map(
+                    ...visible.map(
                       (order) => OrderCard(
                         order: order,
                         onTrackNow: () => _handleTrackNow(order),
@@ -192,6 +233,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
                         onPayNow: () => _handlePayNow(order),
                       ),
                     ),
+                  const SizedBox(height: 6),
+                  _HelpBanner(
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const HelpSupportScreen()),
+                    ),
+                  ),
                   const SizedBox(height: 12),
                 ],
               ),
@@ -206,59 +254,50 @@ class _OrdersScreenState extends State<OrdersScreen> {
   }
 }
 
-/// SnapBee-styled AppBar with back, title, history, favourite and a
-/// cart icon carrying a live item-count badge.
-class _OrdersAppBar extends StatelessWidget implements PreferredSizeWidget {
-  final int cartItemCount;
-  final VoidCallback onHistoryTap;
-
-  const _OrdersAppBar({required this.cartItemCount, required this.onHistoryTap});
-
-  @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+/// "Have an issue with your order?" support strip from the reference.
+class _HelpBanner extends StatelessWidget {
+  final VoidCallback onTap;
+  const _HelpBanner({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return AppBar(
-      backgroundColor: const Color.fromARGB(255, 255, 228, 205),
-      elevation: 0,
-      scrolledUnderElevation: 2,
-      surfaceTintColor: Colors.transparent,
-      centerTitle: false,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded),
-        onPressed: () => Navigator.of(context).maybePop(),
-        tooltip: 'Back',
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      decoration: BoxDecoration(
+        color: SnapBeeColors.skyCard,
+        borderRadius: BorderRadius.circular(SnapBeeSpacing.rCard),
       ),
-      title: Text(
-        'My Orders',
-        style: theme.textTheme.titleLarge?.copyWith(
-          fontWeight: FontWeight.w800,
-        ),
+      child: Row(
+        children: [
+          const SnapBeeMascotImage(asset: SnapBeeMascots.notification, height: 44),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Have an issue with your order?', style: SnapBeeText.title),
+                Text("We're here to help you!", style: SnapBeeText.caption),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(color: SnapBeeColors.navy, borderRadius: BorderRadius.circular(SnapBeeSpacing.rPill)),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.support_agent_rounded, color: Colors.white, size: 15),
+                  SizedBox(width: 5),
+                  Text('Contact Support', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.history_rounded),
-          tooltip: 'Order History',
-          onPressed: onHistoryTap,
-        ),
-        IconButton(
-          icon: const Icon(Icons.favorite_border_rounded),
-          tooltip: 'Favourites',
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const WishlistScreen()),
-            );
-          },
-        ),
-        Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: _CartIconWithBadge(count: cartItemCount),
-        ),
-      ],
     );
   }
 }

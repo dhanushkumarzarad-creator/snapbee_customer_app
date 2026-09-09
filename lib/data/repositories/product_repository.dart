@@ -173,6 +173,21 @@ class ProductRepository {
     ], limit: limit);
   }
 
+  /// Customer-visible products sold by one vendor — backs the Vendor / Store
+  /// Details screen (reached from a product card or a past order). Goes
+  /// through the same [_fetch] path so browse-time coverage filtering still
+  /// applies; an unknown / empty vendor id yields an empty list, not an
+  /// error.
+  Future<List<ProductRow>> fetchByVendorId(String vendorId, {int limit = 50}) async {
+    if (vendorId.trim().isEmpty) return const [];
+    return _fetch(
+      (columns) => _baseQuery(columns)
+          .eq('vendor_id', vendorId)
+          .order('created_at', ascending: false)
+          .limit(limit),
+    );
+  }
+
   /// Customer-visible products whose name matches [query] (case-insensitive,
   /// substring match) — backs the Search screen. Empty/whitespace-only
   /// queries return no results rather than the whole catalog.

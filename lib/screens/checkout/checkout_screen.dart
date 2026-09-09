@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/design/snapbee_design.dart';
 import '../../core/location/location_service.dart';
 import '../../core/map/location_picker_screen.dart';
 import '../../core/map/osm_map.dart';
@@ -13,9 +14,12 @@ import '../../core/map/picked_location.dart';
 import '../../data/cart/cart_store.dart';
 import '../../data/repositories/checkout_repository.dart';
 import '../../data/repositories/order_repository.dart';
+import '../../data/repositories/payment_repository.dart';
 import '../cart/models/cart_model.dart';
 import '../cart/widgets/bill_summary_card.dart';
 import '../orders/order_details_screen.dart';
+import '../orders/order_success_screen.dart';
+import 'add_address_screen.dart';
 
 enum _PaymentMethod { upi, card, cod }
 
@@ -50,7 +54,13 @@ class CheckoutScreen extends StatefulWidget {
 class _CheckoutScreenState extends State<CheckoutScreen> {
   final _checkoutRepository = CheckoutRepository(Supabase.instance.client);
   final _orderRepository = OrderRepository(Supabase.instance.client);
+  final _paymentRepository = PaymentRepository(Supabase.instance.client);
   final _addressController = TextEditingController();
+
+  /// True only when a publishable Razorpay key + a Checkout launcher are
+  /// both configured (PaymentRepository.isOnlinePaymentAvailable). While
+  /// false, UPI/Card stay visible but disabled and COD is the working path.
+  final bool _onlinePaymentReady = PaymentRepository.isOnlinePaymentAvailable;
 
   // Cash on Delivery is the only real, backend-enforced payment method
   // (see checkout_repository.dart's own doc comment: no payment gateway is
@@ -145,26 +155,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _openLocationPicker() async {
-    final picked = await Navigator.of(context).push<PickedLocation>(
-      MaterialPageRoute(
-        builder: (_) => LocationPickerScreen(
-          initial: _location == null
-              ? null
-              : PickedLocation(
-                  latitude: _location!.latitude,
-                  longitude: _location!.longitude,
-                  address: _addressController.text.trim(),
-                ),
-        ),
-      ),
+    final initial = _location == null
+        ? null
+        : PickedLocation(
+            latitude: _location!.latitude,
+            longitude: _location!.longitude,
+            address: _addressController.text.trim(),
+          );
+    final result = await Navigator.of(context).push<AddressResult>(
+      MaterialPageRoute(builder: (_) => AddAddressScreen(initial: initial)),
     );
-    if (picked == null || !mounted) return;
+    if (result == null || !mounted) return;
     setState(() {
       _location = LocationResult(
-        latitude: picked.latitude,
-        longitude: picked.longitude,
+        latitude: result.location.latitude,
+        longitude: result.location.longitude,
       );
-      if (picked.address.isNotEmpty) _addressController.text = picked.address;
+      if (result.formatted.isNotEmpty) _addressController.text = result.formatted;
     });
   }
 
@@ -178,6 +185,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (!_canPlaceOrder) return;
     final vendorContext = _vendorContext!;
     final location = _location!;
+    final isCod = _selectedMethod == _PaymentMethod.cod;
 
     setState(() => _isPlacingOrder = true);
     try {
@@ -188,13 +196,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         customerLat: location.latitude,
         customerLng: location.longitude,
         deliveryAddress: _addressController.text.trim(),
-        isCod: _selectedMethod == _PaymentMethod.cod,
+        isCod: isCod,
         idempotencyKey: _idempotencyKey,
       );
-      CartStore.instance.clear();
-      if (!mounted) return;
-      setState(() => _isPlacingOrder = false);
-      await _showOrderPlacedThenOpenDetails(result);
+
+      if (isCod) {
+        // Cash on Delivery — the order is complete the moment it's placed.
+        CartStore.instance.clear();
+        if (!mounted) return;
+        setState(() => _isPlacingOrder = false);
+        await _showOrderPlacedThenOpenDetails(result);
+        return;
+      }
+
+      // Online payment: the order exists as an unpaid 'prepaid' order.
+      // Drive it through the existing Razorpay gateway; the cart is only
+      // cleared once payment is captured.
+      await _runOnlinePayment(result);
     } on CheckoutException catch (error) {
       if (!mounted) return;
       setState(() => _isPlacingOrder = false);
@@ -206,24 +224,79 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  /// Shows the existing "Order Placed!" dialog unchanged, then — per this
-  /// task's own requirement — loads the just-created order back from
-  /// Supabase (not just the RPC's own return values) before opening the
-  /// real order-details screen. Falls back to the RPC result only if that
-  /// read-back itself fails (e.g. a transient network hiccup right after a
-  /// successful placement), so the customer still lands somewhere correct.
+  /// UPI / Card path for a just-created 'prepaid' order. Uses the deployed
+  /// razorpay-create-order + razorpay-verify-payment Edge Functions and the
+  /// registered [PaymentCheckout] launcher. On dismiss/failure the unpaid
+  /// order is cancelled server-side (de_cancel_unpaid_order), and the
+  /// razorpay-webhook `payment.failed` backstop covers a client that closes
+  /// mid-flow.
+  Future<void> _runOnlinePayment(PlaceOrderResult result) async {
+    final launcher = PaymentRepository.checkout;
+    if (!_onlinePaymentReady || launcher == null) {
+      // Should be unreachable (the UPI option is disabled when not ready),
+      // but never leave a dangling unpaid order.
+      await _paymentRepository.cancelUnpaidOrder(result.orderId);
+      if (!mounted) return;
+      setState(() => _isPlacingOrder = false);
+      _showMessage('Online payment is not available yet. Please use Cash on Delivery.');
+      return;
+    }
+
+    try {
+      final gatewayOrder = await _paymentRepository.createGatewayOrder(
+        vertical: 'daily_essentials',
+        referenceId: result.orderId,
+      );
+      final user = Supabase.instance.client.auth.currentUser;
+      final success = await launcher.open(
+        keyId: gatewayOrder.keyId,
+        razorpayOrderId: gatewayOrder.razorpayOrderId,
+        amountPaise: gatewayOrder.amountPaise,
+        currency: gatewayOrder.currency,
+        customerName: user?.userMetadata?['full_name']?.toString() ?? 'SnapBee Customer',
+        customerEmail: user?.email ?? '',
+        customerPhone: user?.phone ?? '',
+        description: 'SnapBee Daily Essentials order',
+      );
+
+      if (success == null) {
+        await _paymentRepository.cancelUnpaidOrder(result.orderId);
+        if (!mounted) return;
+        setState(() => _isPlacingOrder = false);
+        _showMessage('Payment cancelled. Your order was not placed.');
+        return;
+      }
+
+      await _paymentRepository.verifyPayment(
+        razorpayOrderId: success.razorpayOrderId,
+        razorpayPaymentId: success.razorpayPaymentId,
+        razorpaySignature: success.razorpaySignature,
+      );
+
+      CartStore.instance.clear();
+      if (!mounted) return;
+      setState(() => _isPlacingOrder = false);
+      await _showOrderPlacedThenOpenDetails(result);
+    } on PaymentException catch (e) {
+      await _paymentRepository.cancelUnpaidOrder(result.orderId);
+      if (!mounted) return;
+      setState(() => _isPlacingOrder = false);
+      _showMessage(e.message);
+    } catch (_) {
+      await _paymentRepository.cancelUnpaidOrder(result.orderId);
+      if (!mounted) return;
+      setState(() => _isPlacingOrder = false);
+      _showMessage('Payment could not be completed. Your order was not placed.');
+    }
+  }
+
+  /// Loads the just-created order back from Supabase (not just the RPC's own
+  /// return values), then replaces Checkout with the full-screen
+  /// [OrderSuccessScreen] (reference 12). Falls back to the RPC result only
+  /// if that read-back itself fails (a transient network hiccup right after
+  /// a successful placement), so the customer still lands somewhere correct.
   Future<void> _showOrderPlacedThenOpenDetails(PlaceOrderResult result) async {
     final navigator = Navigator.of(context);
-
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => _OrderPlacedDialog(
-        amount: result.totalAmount,
-        onDone: () => Navigator.of(dialogContext).pop(),
-      ),
-    );
-    if (!mounted) return;
 
     OrderRow? order;
     try {
@@ -231,12 +304,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     } catch (_) {
       order = null;
     }
+    if (!mounted) return;
 
+    final storeName =
+        (order != null && order.vendorName.isNotEmpty) ? order.vendorName : 'Store';
     final data = order != null
         ? OrderDetailsData.fromSupabaseOrder(order, paymentLabel: _paymentLabel)
         : OrderDetailsData(
             orderId: result.orderId,
-            storeName: 'Store',
+            storeName: storeName,
             storeImageUrl: '',
             itemsCount: widget.items.fold<int>(0, (sum, i) => sum + i.quantity),
             amount: result.totalAmount,
@@ -246,8 +322,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             isCancelled: false,
           );
 
-    navigator.popUntil((route) => route.isFirst);
-    navigator.push(MaterialPageRoute(builder: (context) => OrderDetailsScreen(order: data)));
+    navigator.pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => OrderSuccessScreen(
+          orderId: result.orderId,
+          amount: result.totalAmount,
+          paymentLabel: _paymentLabel,
+          storeName: storeName,
+          placedAt: order?.orderDate ?? DateTime.now(),
+          detailsData: data,
+        ),
+      ),
+    );
   }
 
   @override
@@ -256,24 +342,29 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final itemCount = widget.items.fold<int>(0, (sum, i) => sum + i.quantity);
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.surfaceContainerLowest,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          tooltip: 'Back',
-          onPressed: () => Navigator.of(context).maybePop(),
+      backgroundColor: SnapBeeColors.scaffold,
+      appBar: const SnapBeeAppBar(
+        subtitle: 'Daily Essentials',
+        trailing: Padding(
+          padding: EdgeInsets.only(right: 12),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.verified_user_rounded, size: 15, color: SnapBeeColors.success),
+              SizedBox(width: 4),
+              Text('100% Secure', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: SnapBeeColors.success)),
+            ],
+          ),
         ),
-        title: const Text(
-          'Checkout',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-        scrolledUnderElevation: 1,
       ),
       body: SafeArea(
+        top: false,
         child: ListView(
           padding: const EdgeInsets.only(bottom: 16),
           children: [
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
+            const _CheckoutSteps(current: 1),
+            const SizedBox(height: 6),
             _SectionCard(
               icon: Icons.location_on_rounded,
               title: 'Delivery Location',
@@ -325,24 +416,32 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               child: Column(
                 children: [
                   _PaymentOption(
-                    label: 'UPI',
-                    subtitle: 'Coming soon — pay via Cash on Delivery for now',
+                    label: 'UPI (GPay, PhonePe, Paytm)',
+                    subtitle: _onlinePaymentReady
+                        ? 'Fast • Secure • via Razorpay'
+                        : 'Requires Razorpay setup — use Cash on Delivery for now',
                     icon: Icons.qr_code_rounded,
-                    selected: false,
-                    enabled: false,
-                    onTap: () => _showMessage(
-                      'Online payments aren\'t available yet — please choose Cash on Delivery.',
-                    ),
+                    selected: _selectedMethod == _PaymentMethod.upi,
+                    enabled: _onlinePaymentReady,
+                    onTap: _onlinePaymentReady
+                        ? () => setState(() => _selectedMethod = _PaymentMethod.upi)
+                        : () => _showMessage(
+                              'Online payment needs Razorpay credentials configured. Please use Cash on Delivery.',
+                            ),
                   ),
                   _PaymentOption(
                     label: 'Credit / Debit Card',
-                    subtitle: 'Coming soon — pay via Cash on Delivery for now',
+                    subtitle: _onlinePaymentReady
+                        ? 'Visa, Mastercard, RuPay • via Razorpay'
+                        : 'Requires Razorpay setup — use Cash on Delivery for now',
                     icon: Icons.credit_card_rounded,
-                    selected: false,
-                    enabled: false,
-                    onTap: () => _showMessage(
-                      'Online payments aren\'t available yet — please choose Cash on Delivery.',
-                    ),
+                    selected: _selectedMethod == _PaymentMethod.card,
+                    enabled: _onlinePaymentReady,
+                    onTap: _onlinePaymentReady
+                        ? () => setState(() => _selectedMethod = _PaymentMethod.card)
+                        : () => _showMessage(
+                              'Online payment needs Razorpay credentials configured. Please use Cash on Delivery.',
+                            ),
                   ),
                   _PaymentOption(
                     label: 'Cash on Delivery',
@@ -645,70 +744,60 @@ class _PaymentOption extends StatelessWidget {
   }
 }
 
-class _OrderPlacedDialog extends StatelessWidget {
-  final double amount;
-  final VoidCallback onDone;
+/// The 4-step Cart → Checkout → Payment → Order Placed indicator from the
+/// reference. Purely visual.
+class _CheckoutSteps extends StatelessWidget {
+  final int current;
+  const _CheckoutSteps({required this.current});
 
-  const _OrderPlacedDialog({required this.amount, required this.onDone});
+  static const _labels = ['Cart', 'Checkout', 'Payment', 'Order Placed'];
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: const BoxDecoration(
-                color: Color(0xFF2E7D32),
-                shape: BoxShape.circle,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: SnapBeeSpacing.gutter),
+      child: Row(
+        children: [
+          for (int i = 0; i < _labels.length; i++) ...[
+            if (i != 0)
+              Expanded(
+                child: Container(
+                  height: 2,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  color: i <= current ? SnapBeeColors.orange : SnapBeeColors.hairline,
+                ),
               ),
-              child: const Icon(
-                Icons.check_rounded,
-                color: Colors.white,
-                size: 40,
-              ),
-            ),
-            const SizedBox(height: 18),
-            Text(
-              'Order Placed!',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Your order worth ₹${amount.toStringAsFixed(0)} has been placed successfully.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: onDone,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primaryOrange,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 24,
+                  height: 24,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: i <= current ? SnapBeeColors.orange : SnapBeeColors.chipFill,
                   ),
+                  child: i < current
+                      ? const Icon(Icons.check, size: 13, color: Colors.white)
+                      : Text('${i + 1}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: i == current ? Colors.white : SnapBeeColors.inkFaint,
+                          )),
                 ),
-                child: const Text(
-                  'Continue Shopping',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
+                const SizedBox(height: 3),
+                Text(_labels[i],
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: i == current ? FontWeight.w800 : FontWeight.w500,
+                      color: i <= current ? SnapBeeColors.ink : SnapBeeColors.inkFaint,
+                    )),
+              ],
             ),
           ],
-        ),
+        ],
       ),
     );
   }

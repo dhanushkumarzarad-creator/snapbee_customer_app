@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/design/snapbee_design.dart';
 import '../../data/cart/cart_store.dart';
 import '../../data/repositories/offer_repository.dart';
 import 'app_colors.dart';
 import 'offer_models.dart';
-import 'widgets/offer_app_bar.dart';
 import 'widgets/offer_banner_carousel.dart';
 import 'widgets/quick_offers_row.dart';
 import 'widgets/special_offers_section.dart';
@@ -165,9 +165,12 @@ class _OfferZoneScreenState extends State<OfferZoneScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: const OfferAppBar(title: 'Offer Zone'),
-      body: SafeArea(child: _body()),
+      backgroundColor: SnapBeeColors.scaffold,
+      appBar: SnapBeeAppBar(
+        subtitle: 'Daily Essentials',
+        showBack: Navigator.of(context).canPop(),
+      ),
+      body: SafeArea(top: false, child: _body()),
     );
   }
 
@@ -185,8 +188,17 @@ class _OfferZoneScreenState extends State<OfferZoneScreen> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.only(top: 8, bottom: 16),
         children: [
+          const SnapBeeHeroCard(
+            tag: 'Daily Essentials',
+            titleTop: 'Big Savings',
+            titleAccent: 'Fresh Everyday!',
+            subtitle: 'Groceries, Food, Meat, Fruits & more',
+            mascot: SnapBeeMascots.shopping,
+            scriptAccent: 'Fresh Deals\nHappier Homes!',
+          ),
+          const SizedBox(height: 8),
           if (_banners.isNotEmpty) ...[
             OfferBannerCarousel(banners: _banners, height: 190),
             const SizedBox(height: 24),
@@ -208,6 +220,11 @@ class _OfferZoneScreenState extends State<OfferZoneScreen> {
             QuickOffersRow(offers: _coupons, onTap: _copyCoupon),
             const SizedBox(height: 12),
           ],
+          const SnapBeePromoFooter(
+            title: 'Use Coupons. Save More.',
+            subtitle: 'Shop smarter with SnapBee!',
+            scriptAccent: 'Everyday Essentials\nEveryday Savings!',
+          ),
         ],
       ),
     );

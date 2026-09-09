@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/design/snapbee_design.dart';
 import '../../data/cart/cart_store.dart';
 import '../../data/repositories/wishlist_repository.dart';
 import 'models/wishlist_model.dart';
@@ -180,35 +181,51 @@ class _WishlistScreenState extends State<WishlistScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final showActions = !_isEmpty && !_loading && _error == null;
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.surfaceContainerLowest,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          tooltip: 'Back',
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-        title: Text(
-          'Wishlist${_items.isNotEmpty ? ' (${_items.length})' : ''}',
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-        scrolledUnderElevation: 1,
-        actions: [
-          if (!_isEmpty && !_loading && _error == null)
-            TextButton(
-              onPressed: _confirmClearWishlist,
-              child: Text(
-                'Clear All',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.error,
+      backgroundColor: SnapBeeColors.scaffold,
+      appBar: SnapBeeAppBar(
+        subtitle: 'Daily Essentials',
+        trailing: showActions
+            ? Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: SnapBeePillButton(
+                  label: 'Clear All',
+                  icon: Icons.delete_outline_rounded,
+                  color: SnapBeeColors.danger,
+                  onTap: _confirmClearWishlist,
                 ),
-              ),
-            ),
-        ],
+              )
+            : null,
       ),
-      body: SafeArea(child: _body(theme)),
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            SnapBeePageHeader(
+              icon: Icons.favorite_rounded,
+              title: 'My Wishlist',
+              subtitle: 'Your favourite products, all in one place',
+              tint: SnapBeeColors.danger,
+              trailing: showActions
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: SnapBeeColors.dangerFill,
+                        borderRadius: BorderRadius.circular(SnapBeeSpacing.rPill),
+                      ),
+                      child: Text(
+                        '${_items.length} Items',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: SnapBeeColors.danger),
+                      ),
+                    )
+                  : null,
+            ),
+            Expanded(child: _body(theme)),
+          ],
+        ),
+      ),
     );
   }
 

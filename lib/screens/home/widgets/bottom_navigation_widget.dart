@@ -8,8 +8,13 @@ import 'package:flutter/material.dart';
 class _NavItem {
   final IconData icon;
   final IconData activeIcon;
+  final String label;
 
-  const _NavItem({required this.icon, required this.activeIcon});
+  const _NavItem({
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+  });
 }
 
 class BottomNavigationWidget extends StatelessWidget {
@@ -22,17 +27,20 @@ class BottomNavigationWidget extends StatelessWidget {
     required this.onTabSelected,
   });
 
+  // Order (Profile, Home, Categories, Offers, Orders) matches the approved
+  // reference and the MainScreen page list. Home (index 1) is the default
+  // landing tab.
   static const List<_NavItem> _items = [
-    _NavItem(icon: Icons.person_outline, activeIcon: Icons.person),
-    _NavItem(icon: Icons.home_outlined, activeIcon: Icons.home),
-    _NavItem(icon: Icons.grid_view_outlined, activeIcon: Icons.grid_view),
-    _NavItem(icon: Icons.local_offer_outlined, activeIcon: Icons.local_offer),
-    _NavItem(icon: Icons.receipt_long_outlined, activeIcon: Icons.receipt_long),
+    _NavItem(icon: Icons.person_outline, activeIcon: Icons.person, label: 'Profile'),
+    _NavItem(icon: Icons.home_outlined, activeIcon: Icons.home, label: 'Home'),
+    _NavItem(icon: Icons.grid_view_outlined, activeIcon: Icons.grid_view, label: 'Categories'),
+    _NavItem(icon: Icons.local_offer_outlined, activeIcon: Icons.local_offer, label: 'Offers'),
+    _NavItem(icon: Icons.receipt_long_outlined, activeIcon: Icons.receipt_long, label: 'Orders'),
   ];
 
-  static const double _barHeight = 74;
-  static const double _stackHeight = 90;
-  static const double _squareSize = 68;
+  static const double _barHeight = 76;
+  static const double _stackHeight = 96;
+  static const double _squareSize = 60;
 
   static const Color _iconColor = Color(0xFF20243A);
 
@@ -52,7 +60,7 @@ class BottomNavigationWidget extends StatelessWidget {
               Positioned(
                 left: 12,
                 right: 12,
-                bottom: 16,
+                bottom: 14,
                 height: _barHeight,
                 child: Container(
                   decoration: BoxDecoration(
@@ -83,15 +91,27 @@ class BottomNavigationWidget extends StatelessWidget {
                         child: InkWell(
                           borderRadius: BorderRadius.circular(50),
                           onTap: () => onTabSelected(index),
-                          child: Center(
-                            child: AnimatedOpacity(
-                              duration: const Duration(milliseconds: 200),
-                              opacity: isSelected ? 0 : 1,
-                              child: Icon(
-                                _items[index].icon,
-                                color: _iconColor,
-                                size: 26,
-                              ),
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 200),
+                            // The selected slot is covered by the floating
+                            // orange button, so hide the plain icon + label
+                            // underneath it.
+                            opacity: isSelected ? 0 : 1,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(_items[index].icon, color: _iconColor, size: 24),
+                                const SizedBox(height: 3),
+                                Text(
+                                  _items[index].label,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: _iconColor,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -108,10 +128,11 @@ class BottomNavigationWidget extends StatelessWidget {
                 left: itemWidth * selectedIndex,
                 top: 0,
                 width: itemWidth,
-                height: _stackHeight - 16,
+                height: _stackHeight - 14,
                 child: _FloatingBeeButton(
                   key: ValueKey(selectedIndex),
                   icon: _items[selectedIndex].activeIcon,
+                  label: _items[selectedIndex].label,
                   squareSize: _squareSize,
                 ),
               ),
@@ -130,11 +151,13 @@ class BottomNavigationWidget extends StatelessWidget {
 
 class _FloatingBeeButton extends StatelessWidget {
   final IconData icon;
+  final String label;
   final double squareSize;
 
   const _FloatingBeeButton({
     super.key,
     required this.icon,
+    required this.label,
     required this.squareSize,
   });
 
@@ -155,34 +178,48 @@ class _FloatingBeeButton extends StatelessWidget {
         alignment: Alignment.bottomCenter,
         clipBehavior: Clip.none,
         children: [
-          // Orange Floating Button
+          // Orange floating button + label
           Positioned(
             bottom: 16,
-            child: Container(
-              width: squareSize,
-              height: squareSize,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                gradient: const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0xFFFFB74D), Color(0xFFFF9100)],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.orange.withValues(alpha: 0.45),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: squareSize,
+                  height: squareSize,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    gradient: const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Color(0xFFFFB74D), Color(0xFFFF9100)],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.orange.withValues(alpha: 0.45),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: Center(child: Icon(icon, color: Colors.white, size: 30)),
+                  child: Center(child: Icon(icon, color: Colors.white, size: 26)),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFFE8790A),
+                  ),
+                ),
+              ],
             ),
           ),
 
-          // Bee Mascot
+          // Bee mascot
           Positioned(
-            bottom: squareSize - 12,
+            bottom: squareSize + 6,
             child: Image.asset(
               'assets/images/mascot/snapbee_homeicon_bee.png',
               width: squareSize + 34,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/design/snapbee_design.dart';
 import '../../data/repositories/category_repository.dart';
 import '../../data/repositories/product_repository.dart';
 import '../cart/cart_screen.dart';
@@ -139,97 +140,75 @@ class _CategoryScreenState extends State<CategoryScreen> {
         _categories[selectedIndex.clamp(0, _categories.length - 1)];
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F8F8),
+      backgroundColor: SnapBeeColors.scaffold,
       body: SafeArea(
         child: Column(
           children: [
-            // Header
-            Container(
-              width: double.infinity,
-              color: const Color(0xFFFFF3DD),
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-              child: Column(
+            // Header — SnapBee wordmark + actions
+            Padding(
+              padding: const EdgeInsets.fromLTRB(SnapBeeSpacing.gutter, 8, 4, 0),
+              child: Row(
                 children: [
-                  // Title + Icons
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        "Categories",
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-
-                      Row(
-                        children: [
-                          IconButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const WishlistScreen(),
-                                ),
-                              );
-                            },
-                            icon: const Icon(Icons.favorite_border),
-                          ),
-                          IconButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const CartScreen(),
-                                ),
-                              );
-                            },
-                            icon: const Icon(Icons.shopping_cart_outlined),
-                          ),
-                        ],
-                      ),
-                    ],
+                  const Expanded(
+                    child: SnapBeeWordmark(subtitle: 'Explore All Categories', center: false),
                   ),
-
-                  const SizedBox(height: 12),
-
-                  // Search Bar
-                  Material(
-                    elevation: 1.5,
-                    shadowColor: Colors.black26,
-                    borderRadius: BorderRadius.circular(12),
-                    color: Colors.white,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const SearchScreen(),
-                        ),
-                      ),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 14,
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.search, color: Colors.grey),
-                            SizedBox(width: 10),
-                            Text(
-                              "Search products",
-                              style: TextStyle(
-                                color: Colors.grey,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                  IconButton(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const WishlistScreen()),
                     ),
+                    icon: const Icon(Icons.favorite_border_rounded, color: SnapBeeColors.ink),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const CartScreen()),
+                    ),
+                    icon: const Icon(Icons.shopping_cart_outlined, color: SnapBeeColors.ink),
                   ),
                 ],
               ),
+            ),
+
+            // Search bar
+            Padding(
+              padding: const EdgeInsets.fromLTRB(SnapBeeSpacing.gutter, 6, SnapBeeSpacing.gutter, 8),
+              child: Material(
+                elevation: 0,
+                borderRadius: BorderRadius.circular(SnapBeeSpacing.rField),
+                color: SnapBeeColors.surface,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(SnapBeeSpacing.rField),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const SearchScreen()),
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(SnapBeeSpacing.rField),
+                      border: Border.all(color: SnapBeeColors.hairline),
+                    ),
+                    child: Row(
+                      children: const [
+                        Icon(Icons.search, color: SnapBeeColors.inkFaint),
+                        SizedBox(width: 10),
+                        Text('Search products', style: TextStyle(color: SnapBeeColors.inkFaint, fontSize: 14)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // Hero
+            const SnapBeeHeroCard(
+              titleTop: 'Explore',
+              titleAccent: 'All Categories',
+              subtitle: 'Everything you need in one place',
+              mascot: SnapBeeMascots.shopping,
+              scriptAccent: 'Local Choices\nHappier Lives!',
+              margin: EdgeInsets.fromLTRB(SnapBeeSpacing.gutter, 0, SnapBeeSpacing.gutter, 8),
             ),
 
             // White Content
